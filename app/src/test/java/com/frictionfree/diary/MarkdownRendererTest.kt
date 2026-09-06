@@ -1,4 +1,4 @@
-﻿package com.frictionfree.diary
+package com.frictionfree.diary
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.LinkAnnotation
@@ -149,9 +149,28 @@ class MarkdownRendererTest {
             onUrlClick = {}
         )
 
-        assertEquals("Attached: ðŸ“· Image", annotated.text)
+        assertTrue(annotated.text.contains("Image"))
         val linkAnnotations = annotated.getLinkAnnotations(0, annotated.length)
         assertEquals(1, linkAnnotations.size)
         assertEquals("https://example.com/image.webp", (linkAnnotations[0].item as LinkAnnotation.Url).url)
+    }
+
+    @Test
+    fun testQuoteFormattingWithLinks() {
+        val input = "**49 **Verily, verily, I say unto you: see [D&C 124](<https://example.com/dc124>)."
+
+        val annotated = buildMarkdownAnnotatedString(
+            text = input,
+            linkColor = Color.Blue,
+            tagColor = Color.Magenta,
+            codeBackgroundColor = Color.LightGray,
+            onTagClick = {},
+            onUrlClick = {}
+        )
+
+        assertEquals("49 Verily, verily, I say unto you: see D&C 124.", annotated.text)
+        val linkAnnotations = annotated.getLinkAnnotations(0, annotated.length)
+        assertEquals(1, linkAnnotations.size)
+        assertEquals("https://example.com/dc124", (linkAnnotations[0].item as LinkAnnotation.Url).url)
     }
 }

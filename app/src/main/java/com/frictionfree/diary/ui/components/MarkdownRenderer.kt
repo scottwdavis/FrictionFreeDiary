@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -67,8 +72,10 @@ fun MarkdownRenderer(
         val lines = normalizedText.lines()
         var inCodeBlock = false
         val codeBlockBuffer = StringBuilder()
+        var i = 0
 
-        for (line in lines) {
+        while (i < lines.size) {
+            val line = lines[i]
             val trimmed = line.trimEnd()
 
             if (trimmed.startsWith("```")) {
@@ -79,11 +86,13 @@ fun MarkdownRenderer(
                 } else {
                     inCodeBlock = true
                 }
+                i++
                 continue
             }
 
             if (inCodeBlock) {
                 codeBlockBuffer.append(line).append("\n")
+                i++
                 continue
             }
 
@@ -93,6 +102,26 @@ fun MarkdownRenderer(
                 val alt = standaloneImageMatch.groupValues[1]
                 val rawUrl = standaloneImageMatch.groupValues[2].trim().removeSurrounding("<", ">")
                 MarkdownImageBlock(url = rawUrl, alt = alt)
+                i++
+                continue
+            }
+
+            // Multi-line blockquote grouping: collects all consecutive > lines
+            if (trimmed.startsWith(">")) {
+                val quoteLines = mutableListOf<String>()
+                while (i < lines.size) {
+                    val currentTrimmed = lines[i].trimEnd()
+                    if (currentTrimmed.startsWith(">")) {
+                        val content = currentTrimmed.removePrefix(">").let {
+                            if (it.startsWith(" ")) it.substring(1) else it
+                        }
+                        quoteLines.add(content)
+                        i++
+                    } else {
+                        break
+                    }
+                }
+                QuoteBlock(lines = quoteLines, onTagClick = onTagClick)
                 continue
             }
 
@@ -133,9 +162,6 @@ fun MarkdownRenderer(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
-                trimmed.startsWith("> ") -> {
-                    QuoteBlock(text = trimmed.removePrefix("> "), onTagClick = onTagClick)
-                }
                 trimmed.startsWith("- [ ] ") || trimmed.startsWith("* [ ] ") -> {
                     TaskItem(text = trimmed.substring(6), isChecked = false, onTagClick = onTagClick)
                 }
@@ -165,6 +191,7 @@ fun MarkdownRenderer(
                     )
                 }
             }
+            i++
         }
 
         if (inCodeBlock && codeBlockBuffer.isNotEmpty()) {
@@ -617,31 +644,44 @@ private fun TaskItem(text: String, isChecked: Boolean, onTagClick: ((String) -> 
 }
 
 @Composable
-private fun QuoteBlock(text: String, onTagClick: ((String) -> Unit)?) {
-    Row(
+private fun QuoteBlock(lines: List<String>, onTagClick: ((String) -> Unit)?) {
+    val barColor = MaterialTheme.colorScheme.primary
+    val surfaceColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                RoundedCornerShape(4.dp)
-            )
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp, topStart = 2.dp, bottomStart = 2.dp))
+            .background(surfaceColor)
+            .drawBehind {
+                val barWidth = 4.dp.toPx()
+                drawRoundRect(
+                    color = barColor,
+                    topLeft = Offset.Zero,
+                    size = Size(barWidth, size.height),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+            }
+            .padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(24.dp)
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        MarkdownInlineText(
-            text = text,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            onTagClick = onTagClick
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for (line in lines) {
+                if (line.isBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                } else {
+                    MarkdownInlineText(
+                        text = line,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onTagClick = onTagClick
+                    )
+                }
+            }
+        }
     }
 }
 
