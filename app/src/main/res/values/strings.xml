@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FrictionFree Diary</string>
+    <string name="shortcut_new_entry_short">New Entry</string>
+    <string name="shortcut_new_entry_long">Write a new journal entry</string>
+    <string name="default_notebook_personal">Personal</string>
+    <string name="default_notebook_ideas">Ideas</string>
+    <string name="default_notebook_reflections">Reflections</string>
+    <string name="biometric_prompt_title">Unlock Diary</string>
+    <string name="biometric_prompt_subtitle">Authenticate to access your private entries</string>
+    <string name="biometric_prompt_negative">Cancel</string>
+</resources>

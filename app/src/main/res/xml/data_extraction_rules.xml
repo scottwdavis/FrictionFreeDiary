@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Disable automatic cloud backup to guarantee data remains 100% on device -->
+        <exclude path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Allow manual device-to-device transfers if user explicitly performs Android migration -->
+        <include path="." />
+    </device-transfer>
+</data-extraction-rules>
