@@ -99,23 +99,30 @@ object DayOneImporter {
         val mediaDir = File(context.filesDir, "media")
         if (!mediaDir.exists()) mediaDir.mkdirs()
 
-        context.contentResolver.openInputStream(zipUri)?.use { inputStream ->
-            ZipInputStream(BufferedInputStream(inputStream)).use { zipStream ->
-                var zipEntry = zipStream.nextEntry
-                while (zipEntry != null) {
+        val tempZipFile = File(context.cacheDir, "dayone_temp_${System.currentTimeMillis()}.zip")
+
+        try {
+            context.contentResolver.openInputStream(zipUri)?.use { input ->
+                FileOutputStream(tempZipFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IllegalArgumentException("Cannot open selected file stream.")
+
+            java.util.zip.ZipFile(tempZipFile).use { zipFile ->
+                val entries = zipFile.entries()
+                while (entries.hasMoreElements()) {
+                    val zipEntry = entries.nextElement()
                     val entryName = zipEntry.name
                     val fileName = File(entryName).name
 
                     if (!zipEntry.isDirectory) {
                         if (entryName.endsWith(".json", ignoreCase = true)) {
                             jsonFilename = fileName
-                            val buffer = ByteArrayOutputStream()
-                            val data = ByteArray(4096)
-                            var count: Int
-                            while (zipStream.read(data).also { count = it } != -1) {
-                                buffer.write(data, 0, count)
+                            zipFile.getInputStream(zipEntry).use { inStream ->
+                                val buffer = ByteArrayOutputStream()
+                                inStream.copyTo(buffer)
+                                jsonContent = buffer.toString("UTF-8")
                             }
-                            jsonContent = buffer.toString("UTF-8")
                         } else if (entryName.contains("photos", ignoreCase = true) ||
                             fileName.endsWith(".jpg", ignoreCase = true) ||
                             fileName.endsWith(".jpeg", ignoreCase = true) ||
@@ -123,8 +130,10 @@ object DayOneImporter {
                         ) {
                             // Extract photo to media dir
                             val destFile = File(mediaDir, "dayone_${UUID.randomUUID().toString().take(8)}_$fileName")
-                            FileOutputStream(destFile).use { output ->
-                                zipStream.copyTo(output)
+                            zipFile.getInputStream(zipEntry).use { inStream ->
+                                FileOutputStream(destFile).use { outStream ->
+                                    inStream.copyTo(outStream)
+                                }
                             }
                             extractedPhotosMap[fileName] = destFile.absolutePath
                             // Also map by name without extension if md5 is used
@@ -132,9 +141,11 @@ object DayOneImporter {
                             extractedPhotosMap[nameWithoutExt] = destFile.absolutePath
                         }
                     }
-                    zipStream.closeEntry()
-                    zipEntry = zipStream.nextEntry
                 }
+            }
+        } finally {
+            if (tempZipFile.exists()) {
+                tempZipFile.delete()
             }
         }
 
@@ -188,7 +199,7 @@ object DayOneImporter {
         dayOneExport.entries.forEach { entry ->
             val (title, content) = parseTitleAndContent(entry.text ?: "")
 
-            val createdAt = parseIsoDate(entry.creationDate)
+            val createdAt = parseIsoDate(entry.creationDate) ?: System.currentTimeMillis()
             val updatedAt = parseIsoDate(entry.modifiedDate) ?: createdAt
 
             // Location
@@ -214,7 +225,7 @@ object DayOneImporter {
                 content = content,
                 notebookId = notebookId,
                 colorHex = EntryColor.DEFAULT.hex,
-                createdAt = createdAt ?: System.currentTimeMillis(),
+                createdAt = createdAt,
                 updatedAt = updatedAt,
                 latitude = lat,
                 longitude = lon,

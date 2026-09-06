@@ -93,13 +93,16 @@ object JsonExporter {
         val uriPath = uri.toString().lowercase()
         if (uriPath.endsWith(".zip")) return true
 
-        // 2. Check ZIP magic bytes (0x50, 0x4B, 0x03, 0x04)
+        // 2. Check MIME type
+        val mime = context.contentResolver.getType(uri)?.lowercase()
+        if (mime != null && mime.contains("zip")) return true
+
+        // 3. Check ZIP magic bytes (0x50, 0x4B) -> 'P', 'K'
         return try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 val header = ByteArray(4)
                 val read = stream.read(header)
-                read == 4 && header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
-                        header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+                read >= 2 && header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
             } ?: false
         } catch (_: Exception) {
             false
