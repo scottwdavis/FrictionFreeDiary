@@ -64,6 +64,7 @@ import coil.compose.AsyncImage
 import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.ui.components.ColorPickerRow
 import com.frictionfree.diary.ui.components.MarkdownEditorToolbar
+import com.frictionfree.diary.ui.components.MarkdownInlineText
 import com.frictionfree.diary.ui.components.MarkdownRenderer
 import com.frictionfree.diary.utils.DateFormatters
 import java.io.File
@@ -330,38 +331,49 @@ fun EditorScreen(
                 }
             }
 
-            // Title input
-            BasicTextField(
-                value = uiState.title,
-                onValueChange = { viewModel.updateTitle(it) },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { innerTextField ->
-                    if (uiState.title.isEmpty()) {
-                        Text(
-                            text = "Title (optional)",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                        )
-                    }
-                    innerTextField()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Content input OR Markdown Preview
             if (uiState.isPreviewMode) {
+                if (uiState.title.isNotBlank()) {
+                    MarkdownInlineText(
+                        text = uiState.title,
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
                 MarkdownRenderer(
                     markdownText = uiState.content.ifBlank { "*Nothing written yet. Tap the edit icon to write!*" },
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
+                // Title input
+                BasicTextField(
+                    value = uiState.title,
+                    onValueChange = { viewModel.updateTitle(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { innerTextField ->
+                        if (uiState.title.isEmpty()) {
+                            Text(
+                                text = "Title (optional)",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Content input
                 BasicTextField(
                     value = contentFieldValue,
                     onValueChange = {

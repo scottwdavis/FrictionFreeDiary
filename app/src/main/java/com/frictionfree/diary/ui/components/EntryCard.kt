@@ -132,8 +132,18 @@ fun EntryCard(
 
                 // Content snippet
                 if (entry.content.isNotBlank()) {
+                    val cleanSnippet = entry.content
+                        .replace(Regex("""!\[([^\]]*)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)"""), "") // remove images
+                        .replace(Regex("""\[([^\]]+)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)"""), "$1") // replace [label](url) with label
+                        .replace(Regex("""<[^>]+>"""), "") // strip remaining html tags
+                        .replace(Regex("""[#*`_~]"""), "") // strip markdown symbols
+                        .lines()
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+
                     Text(
-                        text = entry.content.replace(Regex("""[#*`_~]"""), ""), // strip markdown symbols for clean snippet
+                        text = cleanSnippet,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 3,

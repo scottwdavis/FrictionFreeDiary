@@ -64,7 +64,8 @@ class EditorViewModel(
                     latitude = existing.latitude,
                     longitude = existing.longitude,
                     locationName = existing.locationName,
-                    createdAt = existing.createdAt
+                    createdAt = existing.createdAt,
+                    isPreviewMode = existing.content.isNotBlank()
                 )
             }
         }
