@@ -1,5 +1,6 @@
 package com.frictionfree.diary.ui.screens.editor
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -98,6 +99,10 @@ fun EditorScreen(
     }
 
     val selectedNotebook = notebooks.firstOrNull { it.id == uiState.selectedNotebookId }
+
+    BackHandler {
+        viewModel.saveEntry { onNavigateBack() }
+    }
 
     Scaffold(
         topBar = {

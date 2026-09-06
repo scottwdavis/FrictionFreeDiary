@@ -14,7 +14,6 @@ import com.frictionfree.diary.utils.JsonExporter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,7 +39,7 @@ class SettingsViewModel(
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _latestExportFile = MutableStateFlow<File?>(null)
 
-    val uiState: StateFlow<SettingsUiState> = combine(
+    val uiState: StateFlow<SettingsUiState> = combine<Any?, SettingsUiState>(
         settingsRepository.theme,
         settingsRepository.fontFamily,
         settingsRepository.fontSize,
@@ -49,16 +48,16 @@ class SettingsViewModel(
         settingsRepository.biometricsEnabled,
         _statusMessage,
         _latestExportFile
-    ) { theme, font, size, instant, geo, bio, msg, file ->
+    ) { args ->
         SettingsUiState(
-            currentTheme = theme,
-            currentFontFamily = font,
-            currentFontSize = size,
-            instantCompose = instant,
-            geotaggingEnabled = geo,
-            biometricsEnabled = bio,
-            exportStatusMessage = msg,
-            latestExportFile = file
+            currentTheme = args[0] as AppTheme,
+            currentFontFamily = args[1] as AppFontFamily,
+            currentFontSize = args[2] as AppFontSize,
+            instantCompose = args[3] as Boolean,
+            geotaggingEnabled = args[4] as Boolean,
+            biometricsEnabled = args[5] as Boolean,
+            exportStatusMessage = args[6] as String?,
+            latestExportFile = args[7] as File?
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, SettingsUiState())
 
@@ -84,7 +83,7 @@ class SettingsViewModel(
 
     fun setBiometrics(enabled: Boolean, pin: String? = null) {
         val context = getApplication<Application>()
-        if (enabled && pin != null && pin.isNotBlank()) {
+        if (enabled && !pin.isNullOrBlank()) {
             EncryptionHelper.setPin(context, pin)
             settingsRepository.setBiometricsEnabled(true)
             _statusMessage.value = "Encryption and Biometric lock enabled."

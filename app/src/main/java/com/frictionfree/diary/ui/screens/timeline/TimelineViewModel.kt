@@ -5,13 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.frictionfree.diary.data.model.DiaryEntry
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.repository.DiaryRepository
-import com.frictionfree.diary.utils.DateFormatters
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -44,23 +43,24 @@ class TimelineViewModel(
     val notebooks: StateFlow<List<Notebook>> = diaryRepository.getAllNotebooks()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val uiState: StateFlow<TimelineUiState> = combine(
+    val uiState: StateFlow<TimelineUiState> = combine<Any?, Tuple6<String, String?, String?, TimelineViewMode, Int, List<Notebook>>>(
         _searchQuery,
         _selectedNotebookId,
         _selectedTag,
         _viewMode,
         _weekOffset,
         notebooks
-    ) { query, notebookId, tag, mode, weekOffset, nbs ->
-        Tuple6(query, notebookId, tag, mode, weekOffset, nbs)
-    }.flatMapLatest { tuple ->
-        val query = tuple.v1
-        val notebookId = tuple.v2
-        val tag = tuple.v3
-        val mode = tuple.v4
-        val weekOffset = tuple.v5
-        val nbs = tuple.v6
-
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        Tuple6(
+            args[0] as String,
+            args[1] as String?,
+            args[2] as String?,
+            args[3] as TimelineViewMode,
+            args[4] as Int,
+            args[5] as List<Notebook>
+        )
+    }.flatMapLatest { (query, notebookId, tag, mode, weekOffset, nbs) ->
         val entriesFlow = when {
             query.isNotBlank() -> diaryRepository.searchEntries(query)
             tag != null -> diaryRepository.getEntriesByTag(tag)
@@ -72,7 +72,7 @@ class TimelineViewModel(
             else -> diaryRepository.getAllEntries()
         }
 
-        entriesFlow.combine(MutableStateFlow(tuple)) { entries, _ ->
+        entriesFlow.map { entries ->
             TimelineUiState(
                 entries = entries,
                 notebooks = nbs,

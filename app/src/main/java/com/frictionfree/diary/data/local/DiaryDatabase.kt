@@ -5,7 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.sqlite.db.SupportFactory
 import com.frictionfree.diary.data.local.dao.EntryDao
 import com.frictionfree.diary.data.local.dao.NotebookDao
 import com.frictionfree.diary.data.local.dao.TagDao

@@ -7,10 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
@@ -46,7 +48,6 @@ class MainActivity : FragmentActivity() {
             val theme by app.settingsRepository.theme.collectAsState()
             val fontFamily by app.settingsRepository.fontFamily.collectAsState()
             val fontSize by app.settingsRepository.fontSize.collectAsState()
-            val instantCompose by app.settingsRepository.instantCompose.collectAsState()
             val onboardingDone by app.settingsRepository.onboardingDone.collectAsState()
 
             FrictionFreeDiaryTheme(
@@ -75,19 +76,46 @@ class MainActivity : FragmentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = navBackStackEntry?.destination?.route
 
-                    // Determine start destination
-                    val startDest = when {
-                        !onboardingDone -> Screen.Onboarding.route
-                        sharedData != null -> Screen.Editor.route
-                        intent.getStringExtra("shortcut_action") == "new_entry" -> Screen.Editor.route
-                        instantCompose -> Screen.Editor.route
-                        else -> Screen.Timeline.route
+                    // Start destination is stable: Onboarding if first launch, otherwise Timeline
+                    val startDest = if (!onboardingDone) Screen.Onboarding.route else Screen.Timeline.route
+
+                    // Automatically navigate to Editor on cold launch if instant compose, shortcut, or shared intent
+                    var launchNavHandled by rememberSaveable { mutableStateOf(false) }
+
+                    LaunchedEffect(onboardingDone) {
+                        if (onboardingDone && !launchNavHandled) {
+                            launchNavHandled = true
+                            val shouldOpenEditorOnLaunch = (sharedData != null) ||
+                                    (intent.getStringExtra("shortcut_action") == "new_entry") ||
+                                    (app.settingsRepository.instantCompose.value)
+
+                            if (shouldOpenEditorOnLaunch) {
+                                navController.navigate(Screen.Editor.createRoute(null))
+                            }
+                        }
+                    }
+
+                    // Handle new shared data intents arriving while app is running
+                    LaunchedEffect(sharedData) {
+                        if (sharedData != null && onboardingDone) {
+                            navController.navigate(Screen.Editor.createRoute(null))
+                        }
                     }
 
                     // Hide navigation rail/bar when inside Editor or Onboarding
                     val isFullScreen = currentRoute?.startsWith("editor") == true || currentRoute == Screen.Onboarding.route
 
-                    if (isFullScreen) {
+                    AdaptiveMainScaffold(
+                        currentRoute = currentRoute,
+                        hideNavigationSuite = isFullScreen,
+                        onNavigateToDestination = { dest ->
+                            navController.navigate(dest.route) {
+                                popUpTo(Screen.Timeline.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    ) {
                         DiaryNavHost(
                             navController = navController,
                             diaryRepository = app.diaryRepository,
@@ -95,25 +123,6 @@ class MainActivity : FragmentActivity() {
                             startDestination = startDest,
                             sharedIncomingData = sharedData
                         )
-                    } else {
-                        AdaptiveMainScaffold(
-                            currentRoute = currentRoute,
-                            onNavigateToDestination = { dest ->
-                                navController.navigate(dest.route) {
-                                    popUpTo(Screen.Timeline.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        ) {
-                            DiaryNavHost(
-                                navController = navController,
-                                diaryRepository = app.diaryRepository,
-                                settingsRepository = app.settingsRepository,
-                                startDestination = startDest,
-                                sharedIncomingData = sharedData
-                            )
-                        }
                     }
                 }
             }

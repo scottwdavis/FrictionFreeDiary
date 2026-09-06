@@ -1,8 +1,10 @@
 package com.frictionfree.diary.ui.navigation
 
+import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -103,9 +105,10 @@ fun DiaryNavHost(
         }
 
         composable(Screen.Settings.route) {
+            val context = LocalContext.current
             val settingsVm: SettingsViewModel = viewModel {
                 SettingsViewModel(
-                    application = androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application,
+                    application = context.applicationContext as Application,
                     settingsRepository = settingsRepository,
                     diaryRepository = diaryRepository
                 )
@@ -124,9 +127,10 @@ fun DiaryNavHost(
             )
         ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")
+            val context = LocalContext.current
             val editorVm: EditorViewModel = viewModel {
                 EditorViewModel(
-                    application = androidx.compose.ui.platform.LocalContext.current.applicationContext as android.app.Application,
+                    application = context.applicationContext as Application,
                     diaryRepository = diaryRepository,
                     settingsRepository = settingsRepository
                 )
@@ -149,7 +153,11 @@ fun DiaryNavHost(
             EditorScreen(
                 viewModel = editorVm,
                 onNavigateBack = {
-                    navController.popBackStack()
+                    if (!navController.popBackStack()) {
+                        navController.navigate(Screen.Timeline.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 }
             )
         }

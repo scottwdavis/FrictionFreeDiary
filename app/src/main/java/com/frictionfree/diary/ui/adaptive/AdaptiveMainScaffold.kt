@@ -16,8 +16,11 @@ import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScope
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -38,19 +41,31 @@ enum class DiaryNavDestination(
 @Composable
 fun AdaptiveMainScaffold(
     currentRoute: String?,
+    hideNavigationSuite: Boolean = false,
     onNavigateToDestination: (DiaryNavDestination) -> Unit,
     content: @Composable () -> Unit
 ) {
+    val layoutType = if (hideNavigationSuite) {
+        NavigationSuiteType.None
+    } else {
+        NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
+            currentWindowAdaptiveInfo()
+        )
+    }
+
     NavigationSuiteScaffold(
+        layoutType = layoutType,
         navigationSuiteItems = {
-            DiaryNavDestination.entries.forEach { dest ->
-                val isSelected = currentRoute == dest.route
-                item(
-                    selected = isSelected,
-                    onClick = { onNavigateToDestination(dest) },
-                    icon = { Icon(dest.icon, contentDescription = dest.title) },
-                    label = { Text(dest.title) }
-                )
+            if (!hideNavigationSuite) {
+                DiaryNavDestination.entries.forEach { dest ->
+                    val isSelected = currentRoute == dest.route
+                    item(
+                        selected = isSelected,
+                        onClick = { onNavigateToDestination(dest) },
+                        icon = { Icon(dest.icon, contentDescription = dest.title) },
+                        label = { Text(dest.title) }
+                    )
+                }
             }
         }
     ) {
