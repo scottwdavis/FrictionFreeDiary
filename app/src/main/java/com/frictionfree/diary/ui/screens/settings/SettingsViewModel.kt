@@ -108,17 +108,22 @@ class SettingsViewModel(
     }
 
     fun importFromJson(uri: Uri) {
+        importBackupOrArchive(uri)
+    }
+
+    fun importBackupOrArchive(uri: Uri) {
         viewModelScope.launch {
-            try {
-                val data = JsonExporter.readFromUri(getApplication(), uri)
-                if (data != null) {
-                    diaryRepository.importData(data, overwriteExisting = false)
-                    _statusMessage.value = "Imported ${data.entries.size} entries successfully!"
-                } else {
-                    _statusMessage.value = "Failed to parse JSON backup file."
+            when (val outcome = com.frictionfree.diary.utils.JsonExporter.importBackupOrArchive(getApplication(), uri, diaryRepository)) {
+                is com.frictionfree.diary.utils.ImportOutcome.NativeSuccess -> {
+                    _statusMessage.value = "Imported ${outcome.entryCount} entries from backup successfully!"
                 }
-            } catch (e: Exception) {
-                _statusMessage.value = "Import failed: ${e.localizedMessage}"
+                is com.frictionfree.diary.utils.ImportOutcome.DayOneSuccess -> {
+                    val photoText = if (outcome.photoCount > 0) " and ${outcome.photoCount} photos" else ""
+                    _statusMessage.value = "Imported ${outcome.entryCount} entries$photoText into notebook '${outcome.notebookName}' from Day One!"
+                }
+                is com.frictionfree.diary.utils.ImportOutcome.Error -> {
+                    _statusMessage.value = outcome.message
+                }
             }
         }
     }

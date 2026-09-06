@@ -89,12 +89,12 @@ fun SettingsScreen(
 
     var showPinSetupDialog by remember { mutableStateOf(false) }
 
-    // JSON file picker launcher for Import
-    val jsonPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+    // File picker launcher for Import (supports native JSON and Day One .zip / .json)
+    val importPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.importFromJson(uri)
+            viewModel.importBackupOrArchive(uri)
         }
     }
 
@@ -317,7 +317,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Export your entire diary as standard JSON. You own your words completely.",
+                        text = "Export your entire diary as standard JSON, or import backups and Day One zip exports.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -335,12 +335,22 @@ fun SettingsScreen(
                         }
 
                         OutlinedButton(
-                            onClick = { jsonPickerLauncher.launch("application/json") },
+                            onClick = {
+                                importPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
+                                )
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import JSON")
+                            Text("Import (.zip, .json)")
                         }
                     }
 
