@@ -1,8 +1,11 @@
 package com.frictionfree.diary.ui.screens.settings
 
+import android.Manifest
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.frictionfree.diary.utils.LocationHelper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -95,6 +98,20 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             viewModel.importBackupOrArchive(uri)
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineGranted || coarseGranted) {
+            viewModel.setGeotagging(true)
+            Toast.makeText(context, "Geotagging enabled", Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.setGeotagging(false)
+            Toast.makeText(context, "Location permission is required for geotagging", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -293,11 +310,59 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+
+                            if (uiState.geotaggingEnabled && !LocationHelper.hasLocationPermission(context)) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.errorContainer)
+                                        .clickable {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.LocationOn,
+                                        contentDescription = "Permission needed",
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Location permission needed. Tap to grant.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Switch(
                             checked = uiState.geotaggingEnabled,
-                            onCheckedChange = { viewModel.setGeotagging(it) }
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    if (LocationHelper.hasLocationPermission(context)) {
+                                        viewModel.setGeotagging(true)
+                                    } else {
+                                        locationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    viewModel.setGeotagging(false)
+                                }
+                            }
                         )
                     }
                 }

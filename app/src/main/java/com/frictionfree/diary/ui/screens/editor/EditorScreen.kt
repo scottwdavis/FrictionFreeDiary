@@ -1,10 +1,12 @@
 package com.frictionfree.diary.ui.screens.editor
 
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +34,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -67,6 +73,7 @@ import com.frictionfree.diary.ui.components.MarkdownEditorToolbar
 import com.frictionfree.diary.ui.components.MarkdownInlineText
 import com.frictionfree.diary.ui.components.MarkdownRenderer
 import com.frictionfree.diary.utils.DateFormatters
+import com.frictionfree.diary.utils.LocationHelper
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,6 +103,35 @@ fun EditorScreen(
     ) { uri ->
         if (uri != null) {
             viewModel.addPhoto(uri)
+        }
+    }
+
+    val context = LocalContext.current
+
+    // Location permission launcher
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            viewModel.fetchLocation(force = true)
+        }
+    }
+
+    // Auto-request location permissions and fetch location if geotagging is enabled on an unlocated entry
+    LaunchedEffect(uiState.entryId) {
+        if (viewModel.isGeotaggingEnabled() && uiState.locationName == null && !uiState.isFetchingLocation) {
+            if (LocationHelper.hasLocationPermission(context)) {
+                viewModel.fetchLocation()
+            } else {
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
         }
     }
 
@@ -214,7 +250,31 @@ fun EditorScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Location toggle / fetch
+                            IconButton(onClick = {
+                                if (uiState.locationName != null) {
+                                    viewModel.clearLocation()
+                                } else {
+                                    if (LocationHelper.hasLocationPermission(context)) {
+                                        viewModel.fetchLocation(force = true)
+                                    } else {
+                                        locationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    }
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (uiState.locationName != null) Icons.Default.LocationOn else Icons.Outlined.LocationOn,
+                                    contentDescription = if (uiState.locationName != null) "Remove location" else "Add location",
+                                    tint = if (uiState.locationName != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             // Add Photo
                             IconButton(onClick = {
@@ -255,7 +315,7 @@ fun EditorScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (uiState.locationName != null) {
+                if (uiState.isFetchingLocation) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -263,7 +323,29 @@ fun EditorScreen(
                                 MaterialTheme.colorScheme.surfaceVariant,
                                 RoundedCornerShape(12.dp)
                             )
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(10.dp),
+                            strokeWidth = 1.5.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Locating...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (uiState.locationName != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(start = 8.dp, end = if (!uiState.isPreviewMode) 4.dp else 8.dp, top = 2.dp, bottom = 2.dp)
                     ) {
                         Icon(
                             Icons.Default.LocationOn,
@@ -277,6 +359,18 @@ fun EditorScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (!uiState.isPreviewMode) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove location",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clip(CircleShape)
+                                    .clickable { viewModel.clearLocation() }
+                            )
+                        }
                     }
                 }
             }

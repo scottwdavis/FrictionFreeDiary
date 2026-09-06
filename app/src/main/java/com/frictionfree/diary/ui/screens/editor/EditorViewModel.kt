@@ -10,6 +10,7 @@ import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.repository.DiaryRepository
 import com.frictionfree.diary.data.repository.SettingsRepository
+import com.frictionfree.diary.utils.LocationHelper
 import com.frictionfree.diary.utils.ShareIntentHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +32,7 @@ data class EditorUiState(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val locationName: String? = null,
+    val isFetchingLocation: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val isPreviewMode: Boolean = false,
     val isSaved: Boolean = false
@@ -71,6 +73,8 @@ class EditorViewModel(
         }
     }
 
+    fun isGeotaggingEnabled(): Boolean = settingsRepository.geotaggingEnabled.value
+
     fun initNewEntry(initialTitle: String = "", initialContent: String = "", initialMedia: List<String> = emptyList()) {
         _uiState.value = EditorUiState(
             entryId = UUID.randomUUID().toString(),
@@ -79,6 +83,35 @@ class EditorViewModel(
             mediaUris = initialMedia,
             createdAt = System.currentTimeMillis()
         )
+        if (isGeotaggingEnabled()) {
+            fetchLocation()
+        }
+    }
+
+    fun fetchLocation(force: Boolean = false) {
+        if (!force && !isGeotaggingEnabled()) return
+        val context = getApplication<Application>()
+        if (!LocationHelper.hasLocationPermission(context)) return
+
+        _uiState.value = _uiState.value.copy(isFetchingLocation = true)
+        viewModelScope.launch {
+            try {
+                val location = LocationHelper.getCurrentLocation(context)
+                if (location != null) {
+                    val placeName = LocationHelper.getPlaceName(context, location.latitude, location.longitude)
+                    _uiState.value = _uiState.value.copy(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        locationName = placeName,
+                        isFetchingLocation = false
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(isFetchingLocation = false)
+                }
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(isFetchingLocation = false)
+            }
+        }
     }
 
     fun updateTitle(newTitle: String) {
