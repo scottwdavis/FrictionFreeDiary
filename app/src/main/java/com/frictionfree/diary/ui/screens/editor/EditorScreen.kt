@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -329,217 +330,228 @@ fun EditorScreen(
             }
         }
     ) { innerPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                shadowElevation = 3.dp,
-                tonalElevation = 1.dp,
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                ),
+            val availableHeight = maxHeight
+            val cardMinHeight = (availableHeight - 16.dp).coerceAtLeast(100.dp)
+            val nonContentHeight = if (uiState.mediaUris.isNotEmpty()) 240.dp else 140.dp
+            val contentMinHeight = (cardMinHeight - nonContentHeight).coerceAtLeast(180.dp)
+
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        if (!uiState.isPreviewMode) {
-                            contentFocusRequester.requestFocus()
-                            keyboardController?.show()
-                        }
-                    }
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Column(
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 3.dp,
+                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    // Timestamp and geotag indicator
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = DateFormatters.formatFullDate(uiState.createdAt) + " • " + DateFormatters.formatTime(uiState.createdAt),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (uiState.isFetchingLocation) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(12.dp)
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(10.dp),
-                                    strokeWidth = 1.5.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Locating...",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else if (uiState.locationName != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(12.dp)
-                                    )
-                                    .padding(start = 8.dp, end = if (!uiState.isPreviewMode) 4.dp else 8.dp, top = 2.dp, bottom = 2.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.LocationOn,
-                                    contentDescription = "Location",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = uiState.locationName ?: "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (!uiState.isPreviewMode) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Remove location",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .clickable { viewModel.clearLocation() }
-                                    )
-                                }
+                        .defaultMinSize(minHeight = cardMinHeight)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (!uiState.isPreviewMode) {
+                                contentFocusRequester.requestFocus()
+                                keyboardController?.show()
                             }
                         }
-                    }
-
-                    // Attached Photos gallery
-                    if (uiState.mediaUris.isNotEmpty()) {
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = cardMinHeight)
+                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                    ) {
+                        // Timestamp and geotag indicator
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            uiState.mediaUris.forEach { path ->
-                                Box(
+                            Text(
+                                text = DateFormatters.formatFullDate(uiState.createdAt) + " • " + DateFormatters.formatTime(uiState.createdAt),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (uiState.isFetchingLocation) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
-                                        .size(90.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
                                 ) {
-                                    AsyncImage(
-                                        model = File(path),
-                                        contentDescription = "Attached photo",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(10.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
-                                    // Remove image button
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Locating...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else if (uiState.locationName != null) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(start = 8.dp, end = if (!uiState.isPreviewMode) 4.dp else 8.dp, top = 2.dp, bottom = 2.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.LocationOn,
+                                        contentDescription = "Location",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = uiState.locationName ?: "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (!uiState.isPreviewMode) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove location",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .clickable { viewModel.clearLocation() }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Attached Photos gallery
+                        if (uiState.mediaUris.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                uiState.mediaUris.forEach { path ->
                                     Box(
                                         modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(4.dp)
-                                            .size(22.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
-                                        contentAlignment = Alignment.Center
+                                            .size(90.dp)
+                                            .clip(RoundedCornerShape(8.dp))
                                     ) {
-                                        IconButton(
-                                            onClick = { viewModel.removePhoto(path) },
-                                            modifier = Modifier.size(20.dp)
+                                        AsyncImage(
+                                            model = File(path),
+                                            contentDescription = "Attached photo",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        // Remove image button
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(4.dp)
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Remove",
-                                                modifier = Modifier.size(14.dp),
-                                                tint = MaterialTheme.colorScheme.onSurface
-                                            )
+                                            IconButton(
+                                                onClick = { viewModel.removePhoto(path) },
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Remove",
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                    if (uiState.isPreviewMode) {
-                        if (uiState.title.isNotBlank()) {
-                            MarkdownInlineText(
-                                text = uiState.title,
-                                textStyle = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                        }
-
-                        MarkdownRenderer(
-                            markdownText = uiState.content.ifBlank { "*Nothing written yet. Tap the edit icon to write!*" },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        // Title input
-                        BasicTextField(
-                            value = uiState.title,
-                            onValueChange = { viewModel.updateTitle(it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            decorationBox = { innerTextField ->
-                                if (uiState.title.isEmpty()) {
-                                    Text(
-                                        text = "Title (optional)",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                                    )
-                                }
-                                innerTextField()
+                        if (uiState.isPreviewMode) {
+                            if (uiState.title.isNotBlank()) {
+                                MarkdownInlineText(
+                                    text = uiState.title,
+                                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
                             }
-                        )
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                        Spacer(modifier = Modifier.height(10.dp))
+                            MarkdownRenderer(
+                                markdownText = uiState.content.ifBlank { "*Nothing written yet. Tap the edit icon to write!*" },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            // Title input
+                            BasicTextField(
+                                value = uiState.title,
+                                onValueChange = { viewModel.updateTitle(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                decorationBox = { innerTextField ->
+                                    if (uiState.title.isEmpty()) {
+                                        Text(
+                                            text = "Title (optional)",
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
 
-                        // Content input
-                        BasicTextField(
-                            value = contentFieldValue,
-                            onValueChange = {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Content input
+                            BasicTextField(
+                                value = contentFieldValue,
+                                onValueChange = {
                                 contentFieldValue = it
                                 viewModel.updateContent(it.text)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .defaultMinSize(minHeight = 240.dp)
+                                .defaultMinSize(minHeight = contentMinHeight)
                                 .focusRequester(contentFocusRequester),
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onBackground
@@ -559,8 +571,7 @@ fun EditorScreen(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
 }
