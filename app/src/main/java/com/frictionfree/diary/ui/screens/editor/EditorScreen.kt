@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +42,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -141,6 +144,13 @@ fun EditorScreen(
         viewModel.saveEntry { onNavigateBack() }
     }
 
+    // Automatically save entry whenever navigating away (e.g. tapping bottom nav bar items)
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.saveEntry()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -215,9 +225,13 @@ fun EditorScreen(
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     tonalElevation = 3.dp,
-                    modifier = Modifier.imePadding()
+                    modifier = Modifier
+                        .imePadding()
+                        .navigationBarsPadding()
                 ) {
                     Column {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
                         // Formatting tools
                         MarkdownEditorToolbar(
                             onInsertText = { insertText, cursorOffset ->
@@ -234,6 +248,8 @@ fun EditorScreen(
                                 viewModel.updateContent(newText)
                             }
                         )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
                         // Bottom action row: Color picker, photo attach, location
                         Row(

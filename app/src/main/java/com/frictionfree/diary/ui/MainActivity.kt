@@ -102,8 +102,8 @@ class MainActivity : FragmentActivity() {
                         }
                     }
 
-                    // Hide navigation rail/bar when inside Editor or Onboarding
-                    val isFullScreen = currentRoute?.startsWith("editor") == true || currentRoute == Screen.Onboarding.route
+                    // Hide navigation rail/bar only when inside Onboarding
+                    val isFullScreen = currentRoute == Screen.Onboarding.route
 
                     AdaptiveMainScaffold(
                         currentRoute = currentRoute,

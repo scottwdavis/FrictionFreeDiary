@@ -3,8 +3,10 @@ package com.frictionfree.diary.ui.adaptive
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
@@ -23,6 +25,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScope
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.frictionfree.diary.ui.navigation.Screen
 
@@ -45,18 +48,21 @@ fun AdaptiveMainScaffold(
     onNavigateToDestination: (DiaryNavDestination) -> Unit,
     content: @Composable () -> Unit
 ) {
-    val layoutType = if (hideNavigationSuite) {
-        NavigationSuiteType.None
-    } else {
-        NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
-            currentWindowAdaptiveInfo()
-        )
+    val adaptiveLayoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(
+        currentWindowAdaptiveInfo()
+    )
+    val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    val layoutType = when {
+        hideNavigationSuite -> NavigationSuiteType.None
+        isImeVisible && adaptiveLayoutType == NavigationSuiteType.NavigationBar -> NavigationSuiteType.None
+        else -> adaptiveLayoutType
     }
 
     NavigationSuiteScaffold(
         layoutType = layoutType,
         navigationSuiteItems = {
-            if (!hideNavigationSuite) {
+            if (layoutType != NavigationSuiteType.None) {
                 DiaryNavDestination.entries.forEach { dest ->
                     val isSelected = currentRoute == dest.route
                     item(
