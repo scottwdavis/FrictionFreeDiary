@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.frictionfree.diary.DiaryApplication
 import com.frictionfree.diary.data.local.DiaryDatabase
 import com.frictionfree.diary.data.repository.AppFontFamily
 import com.frictionfree.diary.data.repository.AppFontSize
@@ -11,7 +12,10 @@ import com.frictionfree.diary.data.repository.AppTheme
 import com.frictionfree.diary.data.repository.DiaryRepository
 import com.frictionfree.diary.data.repository.SettingsRepository
 import com.frictionfree.diary.data.security.EncryptionHelper
+import com.frictionfree.diary.utils.ImportManager
+import com.frictionfree.diary.utils.ImportOutcome
 import com.frictionfree.diary.utils.JsonExporter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -115,17 +119,68 @@ class SettingsViewModel(
     }
 
     fun importBackupOrArchive(uri: Uri) {
-        viewModelScope.launch {
-            when (val outcome = com.frictionfree.diary.utils.JsonExporter.importBackupOrArchive(getApplication(), uri, diaryRepository)) {
-                is com.frictionfree.diary.utils.ImportOutcome.NativeSuccess -> {
-                    _statusMessage.value = "Imported ${outcome.entryCount} entries from backup successfully!"
+        val app = getApplication<Application>() as? DiaryApplication
+        val scope = app?.applicationScope ?: viewModelScope
+
+        scope.launch {
+            ImportManager.updateProgress(
+                isImporting = true,
+                progress = null,
+                title = "Starting Import...",
+                detail = "Opening file..."
+            )
+
+            val outcome = JsonExporter.importBackupOrArchive(
+                context = getApplication(),
+                uri = uri,
+                diaryRepository = diaryRepository,
+                onProgress = { title, detail, progress ->
+                    ImportManager.updateProgress(
+                        isImporting = true,
+                        progress = progress,
+                        title = title,
+                        detail = detail
+                    )
                 }
-                is com.frictionfree.diary.utils.ImportOutcome.DayOneSuccess -> {
+            )
+
+            when (outcome) {
+                is ImportOutcome.NativeSuccess -> {
+                    val msg = "Imported ${outcome.entryCount} entries from backup successfully!"
+                    _statusMessage.value = msg
+                    ImportManager.updateProgress(
+                        isImporting = false,
+                        progress = 1f,
+                        title = "Import Complete",
+                        detail = msg,
+                        isComplete = true
+                    )
+                    delay(4000)
+                    ImportManager.dismiss()
+                }
+                is ImportOutcome.DayOneSuccess -> {
                     val photoText = if (outcome.photoCount > 0) " and ${outcome.photoCount} photos" else ""
-                    _statusMessage.value = "Imported ${outcome.entryCount} entries$photoText into notebook '${outcome.notebookName}' from Day One!"
+                    val msg = "Imported ${outcome.entryCount} entries$photoText into '${outcome.notebookName}'"
+                    _statusMessage.value = msg
+                    ImportManager.updateProgress(
+                        isImporting = false,
+                        progress = 1f,
+                        title = "Import Complete",
+                        detail = msg,
+                        isComplete = true
+                    )
+                    delay(4000)
+                    ImportManager.dismiss()
                 }
-                is com.frictionfree.diary.utils.ImportOutcome.Error -> {
+                is ImportOutcome.Error -> {
                     _statusMessage.value = outcome.message
+                    ImportManager.updateProgress(
+                        isImporting = false,
+                        progress = null,
+                        title = "Import Failed",
+                        detail = outcome.message,
+                        error = outcome.message
+                    )
                 }
             }
         }

@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -14,7 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -23,9 +27,11 @@ import com.frictionfree.diary.data.security.BiometricAuthManager
 import com.frictionfree.diary.data.security.EncryptionHelper
 import com.frictionfree.diary.ui.adaptive.AdaptiveMainScaffold
 import com.frictionfree.diary.ui.components.BiometricLockScreen
+import com.frictionfree.diary.ui.components.FloatingImportProgressBar
 import com.frictionfree.diary.ui.navigation.DiaryNavHost
 import com.frictionfree.diary.ui.navigation.Screen
 import com.frictionfree.diary.ui.theme.FrictionFreeDiaryTheme
+import com.frictionfree.diary.utils.ImportManager
 import com.frictionfree.diary.utils.ShareIntentHelper
 
 class MainActivity : FragmentActivity() {
@@ -104,48 +110,60 @@ class MainActivity : FragmentActivity() {
 
                     // Hide navigation rail/bar only when inside Onboarding
                     val isFullScreen = currentRoute == Screen.Onboarding.route
+                    val importProgress by ImportManager.progressState.collectAsState()
 
-                    AdaptiveMainScaffold(
-                        currentRoute = currentRoute,
-                        hideNavigationSuite = isFullScreen,
-                        onNavigateToDestination = { dest ->
-                            val current = navController.currentDestination?.route
-                            val isCurrentlyInEditor = current?.startsWith("editor") == true
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        AdaptiveMainScaffold(
+                            currentRoute = currentRoute,
+                            hideNavigationSuite = isFullScreen,
+                            onNavigateToDestination = { dest ->
+                                val current = navController.currentDestination?.route
+                                val isCurrentlyInEditor = current?.startsWith("editor") == true
 
-                            if (dest.route == Screen.Timeline.route) {
-                                // Navigating to Stream (Timeline):
-                                // Always pop back to Timeline root cleanly without restoring child/editor states.
-                                navController.popBackStack(Screen.Timeline.route, inclusive = false)
-                            } else {
-                                if (isCurrentlyInEditor) {
-                                    // If in Editor, first try popping back if target destination is already on backstack
-                                    val poppedToTarget = navController.popBackStack(dest.route, inclusive = false)
-                                    if (!poppedToTarget) {
-                                        // Otherwise pop Editor off to Timeline so Editor is never saved in backstack state
-                                        navController.popBackStack(Screen.Timeline.route, inclusive = false)
+                                if (dest.route == Screen.Timeline.route) {
+                                    // Navigating to Stream (Timeline):
+                                    // Always pop back to Timeline root cleanly without restoring child/editor states.
+                                    navController.popBackStack(Screen.Timeline.route, inclusive = false)
+                                } else {
+                                    if (isCurrentlyInEditor) {
+                                        // If in Editor, first try popping back if target destination is already on backstack
+                                        val poppedToTarget = navController.popBackStack(dest.route, inclusive = false)
+                                        if (!poppedToTarget) {
+                                            // Otherwise pop Editor off to Timeline so Editor is never saved in backstack state
+                                            navController.popBackStack(Screen.Timeline.route, inclusive = false)
+                                            navController.navigate(dest.route) {
+                                                popUpTo(Screen.Timeline.route) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    } else {
+                                        // Standard tab switching
                                         navController.navigate(dest.route) {
                                             popUpTo(Screen.Timeline.route) { saveState = true }
                                             launchSingleTop = true
                                             restoreState = true
                                         }
                                     }
-                                } else {
-                                    // Standard tab switching
-                                    navController.navigate(dest.route) {
-                                        popUpTo(Screen.Timeline.route) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
                                 }
                             }
+                        ) {
+                            DiaryNavHost(
+                                navController = navController,
+                                diaryRepository = app.diaryRepository,
+                                settingsRepository = app.settingsRepository,
+                                startDestination = startDest,
+                                sharedIncomingData = sharedData
+                            )
                         }
-                    ) {
-                        DiaryNavHost(
-                            navController = navController,
-                            diaryRepository = app.diaryRepository,
-                            settingsRepository = app.settingsRepository,
-                            startDestination = startDest,
-                            sharedIncomingData = sharedData
+
+                        FloatingImportProgressBar(
+                            importProgress = importProgress,
+                            onDismiss = { ImportManager.dismiss() },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
                 }

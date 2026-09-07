@@ -90,8 +90,10 @@ object DayOneImporter {
     suspend fun importZip(
         context: Context,
         zipUri: Uri,
-        diaryRepository: DiaryRepository
+        diaryRepository: DiaryRepository,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
     ): DayOneImportResult = withContext(Dispatchers.IO) {
+        onProgress?.invoke("Importing Archive", "Reading ZIP archive...", null)
         var jsonContent: String? = null
         var jsonFilename: String? = null
         val extractedPhotosMap = mutableMapOf<String, String>() // filename/md5 -> local absolute file path
@@ -108,6 +110,7 @@ object DayOneImporter {
                 }
             } ?: throw IllegalArgumentException("Cannot open selected file stream.")
 
+            onProgress?.invoke("Extracting Archive", "Extracting photos & journal data...", null)
             java.util.zip.ZipFile(tempZipFile).use { zipFile ->
                 val entries = zipFile.entries()
                 while (entries.hasMoreElements()) {
@@ -165,7 +168,8 @@ object DayOneImporter {
             jsonContent = jsonContent!!,
             notebookName = derivedNotebookName,
             photoPathMap = extractedPhotosMap,
-            diaryRepository = diaryRepository
+            diaryRepository = diaryRepository,
+            onProgress = onProgress
         )
     }
 
@@ -176,11 +180,14 @@ object DayOneImporter {
         jsonContent: String,
         notebookName: String,
         photoPathMap: Map<String, String> = emptyMap(),
-        diaryRepository: DiaryRepository
+        diaryRepository: DiaryRepository,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
     ): DayOneImportResult = withContext(Dispatchers.IO) {
+        onProgress?.invoke("Preparing Import", "Parsing journal entries...", null)
         val dayOneExport = jsonParser.decodeFromString<DayOneExport>(jsonContent)
 
         // 1. Create or find Notebook
+        onProgress?.invoke("Setting Up Notebook", "Creating notebook '$notebookName'...", null)
         val allNotebooks = diaryRepository.getAllNotebooks()
         val notebookId = "nb_dayone_${UUID.randomUUID().toString().take(8)}"
         val notebook = Notebook(
@@ -194,9 +201,10 @@ object DayOneImporter {
         diaryRepository.saveNotebook(notebook)
 
         var photoCount = 0
+        val total = dayOneExport.entries.size
 
         // 2. Map and save entries
-        dayOneExport.entries.forEach { entry ->
+        dayOneExport.entries.forEachIndexed { index, entry ->
             val (title, content) = parseTitleAndContent(entry.text ?: "")
 
             val createdAt = parseIsoDate(entry.creationDate) ?: System.currentTimeMillis()
@@ -237,6 +245,11 @@ object DayOneImporter {
             )
 
             diaryRepository.saveEntry(diaryEntry)
+
+            if (index % 5 == 0 || index == total - 1) {
+                val fraction = if (total > 0) (index + 1).toFloat() / total else 1f
+                onProgress?.invoke("Importing Entries", "${index + 1} of $total (${(fraction * 100).toInt()}%)", fraction)
+            }
         }
 
         DayOneImportResult(

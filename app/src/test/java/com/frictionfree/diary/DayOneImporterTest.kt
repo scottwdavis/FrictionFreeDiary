@@ -98,15 +98,16 @@ class DayOneImporterTest {
             override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
             override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
+            override fun getNotebookEntryCounts(): Flow<Map<String, Int>> = flowOf(emptyMap())
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)
             }
-            override suspend fun deleteNotebook(id: String) {}
+            override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {}
             override suspend fun getNotebookById(id: String): Notebook? = savedNotebooks.firstOrNull { it.id == id }
             override suspend fun ensureDefaultNotebooks() {}
             override fun getAllTags(): Flow<List<Tag>> = flowOf(emptyList())
             override suspend fun getExportData(): ExportData = ExportData()
-            override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean) {}
+            override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean, onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?) {}
         }
 
         val result = DayOneImporter.importJsonContent(
@@ -169,15 +170,16 @@ class DayOneImporterTest {
             override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
             override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
+            override fun getNotebookEntryCounts(): Flow<Map<String, Int>> = flowOf(emptyMap())
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)
             }
-            override suspend fun deleteNotebook(id: String) {}
+            override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {}
             override suspend fun getNotebookById(id: String): Notebook? = savedNotebooks.firstOrNull { it.id == id }
             override suspend fun ensureDefaultNotebooks() {}
             override fun getAllTags(): Flow<List<Tag>> = flowOf(emptyList())
             override suspend fun getExportData(): ExportData = ExportData()
-            override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean) {}
+            override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean, onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?) {}
         }
 
         val result = DayOneImporter.importJsonContent(content, derivedNotebook, emptyMap(), fakeRepo)

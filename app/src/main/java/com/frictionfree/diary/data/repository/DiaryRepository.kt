@@ -50,7 +50,11 @@ interface DiaryRepository {
 
     // Export / Import
     suspend fun getExportData(): ExportData
-    suspend fun importData(exportData: ExportData, overwriteExisting: Boolean = false)
+    suspend fun importData(
+        exportData: ExportData,
+        overwriteExisting: Boolean = false,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
+    )
 }
 
 class DiaryRepositoryImpl(
@@ -310,16 +314,26 @@ class DiaryRepositoryImpl(
         )
     }
 
-    override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean) {
+    override suspend fun importData(
+        exportData: ExportData,
+        overwriteExisting: Boolean,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?
+    ) {
         // 1. Import notebooks
+        onProgress?.invoke("Importing Notebooks", "Setting up ${exportData.notebooks.size} notebooks...", null)
         val notebookEntities = exportData.notebooks.map { NotebookEntity.fromDomain(it) }
         notebookDao.insertNotebooks(notebookEntities)
 
         // 2. Import entries
-        for (entry in exportData.entries) {
+        val total = exportData.entries.size
+        for ((index, entry) in exportData.entries.withIndex()) {
             val existing = entryDao.getEntryById(entry.id)
             if (existing == null || overwriteExisting) {
                 saveEntry(entry)
+            }
+            if (index % 5 == 0 || index == total - 1) {
+                val fraction = if (total > 0) (index + 1).toFloat() / total else 1f
+                onProgress?.invoke("Importing Entries", "${index + 1} of $total (${(fraction * 100).toInt()}%)", fraction)
             }
         }
     }

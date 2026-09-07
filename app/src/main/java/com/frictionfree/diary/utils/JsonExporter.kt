@@ -49,17 +49,19 @@ object JsonExporter {
     suspend fun importBackupOrArchive(
         context: Context,
         uri: Uri,
-        diaryRepository: DiaryRepository
+        diaryRepository: DiaryRepository,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
     ): ImportOutcome {
         return try {
             if (isZipFile(context, uri)) {
-                val dayOneResult = DayOneImporter.importZip(context, uri, diaryRepository)
+                val dayOneResult = DayOneImporter.importZip(context, uri, diaryRepository, onProgress)
                 ImportOutcome.DayOneSuccess(
                     entryCount = dayOneResult.entryCount,
                     notebookName = dayOneResult.notebookName,
                     photoCount = dayOneResult.photoCount
                 )
             } else {
+                onProgress?.invoke("Reading File", "Loading backup contents...", null)
                 // Read text content
                 val content = context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
@@ -70,7 +72,9 @@ object JsonExporter {
                     val dayOneResult = DayOneImporter.importJsonContent(
                         jsonContent = content,
                         notebookName = "Day One Import",
-                        diaryRepository = diaryRepository
+                        photoPathMap = emptyMap(),
+                        diaryRepository = diaryRepository,
+                        onProgress = onProgress
                     )
                     ImportOutcome.DayOneSuccess(
                         entryCount = dayOneResult.entryCount,
@@ -79,7 +83,7 @@ object JsonExporter {
                     )
                 } else {
                     val nativeData = parseFromJsonString(content)
-                    diaryRepository.importData(nativeData, overwriteExisting = false)
+                    diaryRepository.importData(nativeData, overwriteExisting = false, onProgress = onProgress)
                     ImportOutcome.NativeSuccess(entryCount = nativeData.entries.size)
                 }
             }
