@@ -22,15 +22,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +72,7 @@ fun NotebooksScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var notebookToEdit by remember { mutableStateOf<Notebook?>(null) }
     var notebookToDelete by remember { mutableStateOf<Notebook?>(null) }
 
     Scaffold(
@@ -85,6 +89,13 @@ fun NotebooksScreen(
                     if (uiState.selectedNotebook != null) {
                         IconButton(onClick = { viewModel.selectNotebook(null) }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to Notebooks")
+                        }
+                    }
+                },
+                actions = {
+                    if (uiState.selectedNotebook != null) {
+                        IconButton(onClick = { notebookToEdit = uiState.selectedNotebook }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Notebook")
                         }
                     }
                 },
@@ -131,6 +142,7 @@ fun NotebooksScreen(
                             notebook = notebook,
                             entryCount = count,
                             onClick = { viewModel.selectNotebook(notebook) },
+                            onEdit = { notebookToEdit = notebook },
                             onDelete = { notebookToDelete = notebook }
                         )
                     }
@@ -177,12 +189,55 @@ fun NotebooksScreen(
         }
     }
 
+    if (uiState.isProcessing) {
+        AlertDialog(
+            onDismissRequest = { /* prevent dismiss while processing */ },
+            confirmButton = {},
+            text = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Processing notebook...",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        )
+    }
+
     if (showCreateDialog) {
-        CreateNotebookDialog(
+        NotebookDialog(
+            title = "New Notebook",
+            confirmLabel = "Create",
             onDismiss = { showCreateDialog = false },
-            onCreate = { name, desc, color ->
+            onConfirm = { name, desc, color ->
                 viewModel.createNotebook(name, desc, color)
                 showCreateDialog = false
+            }
+        )
+    }
+
+    notebookToEdit?.let { notebook ->
+        NotebookDialog(
+            title = "Edit Notebook",
+            confirmLabel = "Save",
+            initialName = notebook.name,
+            initialDescription = notebook.description,
+            initialColor = notebook.colorHex,
+            onDismiss = { notebookToEdit = null },
+            onConfirm = { name, desc, color ->
+                viewModel.updateNotebook(notebook, name, desc, color)
+                notebookToEdit = null
             }
         )
     }
@@ -238,6 +293,7 @@ private fun NotebookItemCard(
     notebook: Notebook,
     entryCount: Int,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -303,13 +359,22 @@ private fun NotebookItemCard(
                 }
             }
 
-            if (!notebook.isDefault) {
-                IconButton(onClick = onDelete) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit) {
                     Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Delete notebook",
+                        Icons.Default.Edit,
+                        contentDescription = "Edit notebook",
                         tint = MaterialTheme.colorScheme.outline
                     )
+                }
+                if (!notebook.isDefault) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete notebook",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         }
@@ -486,21 +551,29 @@ private fun DeleteNotebookWithOptionsDialog(
 }
 
 @Composable
-private fun CreateNotebookDialog(
+private fun NotebookDialog(
+    title: String,
+    confirmLabel: String,
+    initialName: String = "",
+    initialDescription: String = "",
+    initialColor: String = "#2E7D32",
     onDismiss: () -> Unit,
-    onCreate: (String, String, String) -> Unit
+    onConfirm: (name: String, description: String, color: String) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedColor by remember { mutableStateOf("#2E7D32") }
+    var name by remember { mutableStateOf(initialName) }
+    var description by remember { mutableStateOf(initialDescription) }
+    var selectedColor by remember { mutableStateOf(initialColor) }
 
-    val colors = listOf("#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#C2185B", "#00695C", "#37474F")
+    val colors = listOf(
+        "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#C2185B",
+        "#00695C", "#4527A0", "#37474F", "#B71C1C", "#827717"
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Notebook") },
+        title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -522,26 +595,45 @@ private fun CreateNotebookDialog(
                     style = MaterialTheme.typography.labelMedium
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    colors.forEach { hex ->
-                        val isSelected = hex == selectedColor
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(android.graphics.Color.parseColor(hex)))
-                                .clickable { selectedColor = hex }
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    colors.chunked(5).forEach { rowColors ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            rowColors.forEach { hex ->
+                                val isSelected = hex.equals(selectedColor, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(hex)))
+                                        .border(
+                                            width = if (isSelected) 3.dp else 1.dp,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedColor = hex },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onCreate(name, description, selectedColor) },
+                onClick = { onConfirm(name, description, selectedColor) },
                 enabled = name.isNotBlank()
             ) {
-                Text("Create")
+                Text(confirmLabel)
             }
         },
         dismissButton = {

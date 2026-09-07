@@ -20,7 +20,8 @@ data class NotebooksUiState(
     val notebooks: List<Notebook> = emptyList(),
     val selectedNotebook: Notebook? = null,
     val notebookEntries: List<DiaryEntry> = emptyList(),
-    val entryCounts: Map<String, Int> = emptyMap()
+    val entryCounts: Map<String, Int> = emptyMap(),
+    val isProcessing: Boolean = false
 )
 
 class NotebooksViewModel(
@@ -28,21 +29,29 @@ class NotebooksViewModel(
 ) : ViewModel() {
 
     private val _selectedNotebook = MutableStateFlow<Notebook?>(null)
+    private val _isProcessing = MutableStateFlow(false)
 
-    val uiState: StateFlow<NotebooksUiState> = _selectedNotebook.flatMapLatest { selected ->
-        val entriesFlow = if (selected == null) flowOf(emptyList()) else diaryRepository.getEntriesByNotebook(selected.id)
-        combine(
-            diaryRepository.getAllNotebooks(),
-            entriesFlow,
-            diaryRepository.getNotebookEntryCounts()
-        ) { notebooks, entries, counts ->
-            NotebooksUiState(
-                notebooks = notebooks,
-                selectedNotebook = selected,
-                notebookEntries = entries,
-                entryCounts = counts
-            )
-        }
+    val uiState: StateFlow<NotebooksUiState> = combine(
+        _selectedNotebook.flatMapLatest { selected ->
+            val entriesFlow = if (selected == null) flowOf(emptyList()) else diaryRepository.getEntriesByNotebook(selected.id)
+            combine(
+                diaryRepository.getAllNotebooks(),
+                entriesFlow,
+                diaryRepository.getNotebookEntryCounts()
+            ) { notebooks, entries, counts ->
+                Triple(notebooks, entries, counts)
+            }
+        },
+        _isProcessing
+    ) { (notebooks, entries, counts), isProcessing ->
+        val currentSelected = _selectedNotebook.value?.let { sel -> notebooks.find { it.id == sel.id } }
+        NotebooksUiState(
+            notebooks = notebooks,
+            selectedNotebook = currentSelected,
+            notebookEntries = entries,
+            entryCounts = counts,
+            isProcessing = isProcessing
+        )
     }.stateIn(viewModelScope, SharingStarted.Lazily, NotebooksUiState())
 
     fun selectNotebook(notebook: Notebook?) {
@@ -52,22 +61,52 @@ class NotebooksViewModel(
     fun createNotebook(name: String, description: String, colorHex: String) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val notebook = Notebook(
-                id = "nb_${UUID.randomUUID().toString().take(8)}",
-                name = name.trim(),
-                description = description.trim(),
-                colorHex = colorHex,
-                isDefault = false
-            )
-            diaryRepository.saveNotebook(notebook)
+            _isProcessing.value = true
+            try {
+                val notebook = Notebook(
+                    id = "nb_${UUID.randomUUID().toString().take(8)}",
+                    name = name.trim(),
+                    description = description.trim(),
+                    colorHex = colorHex,
+                    isDefault = false
+                )
+                diaryRepository.saveNotebook(notebook)
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    fun updateNotebook(notebook: Notebook, name: String, description: String, colorHex: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            _isProcessing.value = true
+            try {
+                val updated = notebook.copy(
+                    name = name.trim(),
+                    description = description.trim(),
+                    colorHex = colorHex
+                )
+                diaryRepository.saveNotebook(updated)
+                if (_selectedNotebook.value?.id == notebook.id) {
+                    _selectedNotebook.value = updated
+                }
+            } finally {
+                _isProcessing.value = false
+            }
         }
     }
 
     fun deleteNotebook(notebookId: String, deleteEntries: Boolean = false, targetNotebookId: String? = null) {
         viewModelScope.launch {
-            diaryRepository.deleteNotebook(notebookId, deleteEntries, targetNotebookId)
-            if (_selectedNotebook.value?.id == notebookId) {
-                _selectedNotebook.value = null
+            _isProcessing.value = true
+            try {
+                diaryRepository.deleteNotebook(notebookId, deleteEntries, targetNotebookId)
+                if (_selectedNotebook.value?.id == notebookId) {
+                    _selectedNotebook.value = null
+                }
+            } finally {
+                _isProcessing.value = false
             }
         }
     }
