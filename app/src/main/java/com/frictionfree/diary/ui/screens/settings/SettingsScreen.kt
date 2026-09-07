@@ -27,7 +27,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.FileDownload
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -52,6 +55,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -91,13 +95,14 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showPinSetupDialog by remember { mutableStateOf(false) }
+    var pendingImportType by remember { mutableStateOf<String?>(null) }
 
-    // File picker launcher for Import (supports native JSON and Day One .zip / .json)
+    // File picker launcher for Import (supports native JSON, Day One .zip / .json, and Facebook .zip / .json)
     val importPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.importBackupOrArchive(uri)
+            viewModel.importBackupOrArchive(uri, pendingImportType)
         }
     }
 
@@ -382,41 +387,20 @@ fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Export your entire diary as standard JSON, or import backups and Day One zip exports.",
+                        text = "Export your entire diary as standard JSON, or import archives from Day One or Facebook.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = { viewModel.exportToJson() },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export JSON")
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                importPickerLauncher.launch(
-                                    arrayOf(
-                                        "application/zip",
-                                        "application/x-zip-compressed",
-                                        "application/json",
-                                        "application/octet-stream",
-                                        "*/*"
-                                    )
-                                )
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import (.zip, .json)")
-                        }
+                    Button(
+                        onClick = { viewModel.exportToJson() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export JSON Backup")
                     }
 
                     // Share button if export was generated
@@ -443,6 +427,80 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Share / Save ${uiState.latestExportFile!!.name}")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Import Journal Data",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Choose the source platform you are importing from:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ImportSourceRow(
+                            icon = Icons.Default.Book,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            title = "Day One Archive",
+                            subtitle = "ZIP archive or JSON file (entries, photos, tags)",
+                            onClick = {
+                                pendingImportType = "DayOne"
+                                importPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
+                                )
+                            }
+                        )
+
+                        ImportSourceRow(
+                            icon = Icons.Default.Public,
+                            iconTint = Color(0xFF1877F2),
+                            title = "Facebook Archive",
+                            subtitle = "ZIP archive or your_posts_1.json (posts & photos)",
+                            onClick = {
+                                pendingImportType = "Facebook"
+                                importPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
+                                )
+                            }
+                        )
+
+                        ImportSourceRow(
+                            icon = Icons.Default.FileUpload,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            title = "FrictionFree Backup",
+                            subtitle = "Native JSON backup file",
+                            onClick = {
+                                pendingImportType = "Native"
+                                importPickerLauncher.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "application/octet-stream",
+                                        "*/*"
+                                    )
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -580,3 +638,64 @@ private fun PinSetupDialog(
         }
     )
 }
+
+@Composable
+private fun ImportSourceRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    OutlinedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(iconTint.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+

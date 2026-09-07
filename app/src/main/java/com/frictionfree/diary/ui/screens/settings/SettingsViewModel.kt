@@ -118,15 +118,22 @@ class SettingsViewModel(
         importBackupOrArchive(uri)
     }
 
-    fun importBackupOrArchive(uri: Uri) {
+    fun importBackupOrArchive(uri: Uri, targetType: String? = null) {
         val app = getApplication<Application>() as? DiaryApplication
         val scope = app?.applicationScope ?: viewModelScope
+
+        val initialTitle = when (targetType) {
+            "Facebook" -> "Importing Facebook..."
+            "DayOne" -> "Importing Day One..."
+            "Native" -> "Restoring Backup..."
+            else -> "Starting Import..."
+        }
 
         scope.launch {
             ImportManager.updateProgress(
                 isImporting = true,
                 progress = null,
-                title = "Starting Import...",
+                title = initialTitle,
                 detail = "Opening file..."
             )
 
@@ -134,6 +141,7 @@ class SettingsViewModel(
                 context = getApplication(),
                 uri = uri,
                 diaryRepository = diaryRepository,
+                targetType = targetType,
                 onProgress = { title, detail, progress ->
                     ImportManager.updateProgress(
                         isImporting = true,

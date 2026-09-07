@@ -51,11 +51,16 @@ object JsonExporter {
         context: Context,
         uri: Uri,
         diaryRepository: DiaryRepository,
+        targetType: String? = null,
         onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
     ): ImportOutcome {
         return try {
             if (isZipFile(context, uri)) {
-                val isFb = isFacebookZipArchive(context, uri)
+                val isFb = when (targetType) {
+                    "Facebook" -> true
+                    "DayOne" -> false
+                    else -> isFacebookZipArchive(context, uri)
+                }
                 if (isFb) {
                     val fbResult = FacebookImporter.importZip(context, uri, diaryRepository, onProgress)
                     ImportOutcome.FacebookSuccess(
@@ -79,7 +84,7 @@ object JsonExporter {
                     reader.readText()
                 } ?: return ImportOutcome.Error("Unable to open selected file.")
 
-                if (DayOneImporter.isDayOneJson(content)) {
+                if (targetType == "DayOne" || (targetType == null && DayOneImporter.isDayOneJson(content))) {
                     val dayOneResult = DayOneImporter.importJsonContent(
                         jsonContent = content,
                         notebookName = "Day One Import",
@@ -92,7 +97,7 @@ object JsonExporter {
                         notebookName = dayOneResult.notebookName,
                         photoCount = dayOneResult.photoCount
                     )
-                } else if (FacebookImporter.isFacebookJson(content)) {
+                } else if (targetType == "Facebook" || (targetType == null && FacebookImporter.isFacebookJson(content))) {
                     val fbResult = FacebookImporter.importJsonContent(
                         jsonContent = content,
                         notebookName = "Facebook",
