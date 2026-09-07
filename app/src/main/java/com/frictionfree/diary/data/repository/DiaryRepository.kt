@@ -1,5 +1,6 @@
 package com.frictionfree.diary.data.repository
 
+import com.frictionfree.diary.data.local.DiaryDatabase
 import com.frictionfree.diary.data.local.dao.EntryDao
 import com.frictionfree.diary.data.local.dao.NotebookDao
 import com.frictionfree.diary.data.local.dao.TagDao
@@ -12,24 +13,29 @@ import com.frictionfree.diary.data.model.ExportData
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.model.Tag
 import com.frictionfree.diary.utils.HashtagParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
 interface DiaryRepository {
-    fun getAllEntries(): Flow<List<DiaryEntry>>
+    fun getAllEntries(isArchived: Boolean = false): Flow<List<DiaryEntry>>
     fun getEntryById(id: String): Flow<DiaryEntry?>
     suspend fun getEntryByIdDirect(id: String): DiaryEntry?
-    fun getEntriesByNotebook(notebookId: String): Flow<List<DiaryEntry>>
-    fun getEntriesByTag(tagName: String): Flow<List<DiaryEntry>>
-    fun searchEntries(query: String): Flow<List<DiaryEntry>>
-    fun getEntriesInRange(startTime: Long, endTime: Long): Flow<List<DiaryEntry>>
+    fun getEntriesByNotebook(notebookId: String, isArchived: Boolean = false): Flow<List<DiaryEntry>>
+    fun getEntriesByTag(tagName: String, isArchived: Boolean = false): Flow<List<DiaryEntry>>
+    fun searchEntries(query: String, isArchived: Boolean = false): Flow<List<DiaryEntry>>
+    fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean = false): Flow<List<DiaryEntry>>
     suspend fun saveEntry(entry: DiaryEntry): String
     suspend fun deleteEntry(id: String)
+    suspend fun deleteEntries(entryIds: List<String>)
+    suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean = true)
+    suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String)
 
     // Notebooks
     fun getAllNotebooks(): Flow<List<Notebook>>
@@ -47,21 +53,61 @@ interface DiaryRepository {
 }
 
 class DiaryRepositoryImpl(
-    private val entryDao: EntryDao,
-    private val notebookDao: NotebookDao,
-    private val tagDao: TagDao
+    private val databaseProvider: (() -> DiaryDatabase)? = null,
+    private val explicitEntryDao: EntryDao? = null,
+    private val explicitNotebookDao: NotebookDao? = null,
+    private val explicitTagDao: TagDao? = null
 ) : DiaryRepository {
+
+    constructor(databaseProvider: () -> DiaryDatabase) : this(
+        databaseProvider = databaseProvider,
+        explicitEntryDao = null,
+        explicitNotebookDao = null,
+        explicitTagDao = null
+    )
+
+    constructor(entryDao: EntryDao, notebookDao: NotebookDao, tagDao: TagDao) : this(
+        databaseProvider = null,
+        explicitEntryDao = entryDao,
+        explicitNotebookDao = notebookDao,
+        explicitTagDao = tagDao
+    )
+
+    private val entryDao: EntryDao get() = explicitEntryDao ?: databaseProvider?.invoke()?.entryDao()
+        ?: error("No database or DAO provided")
+    private val notebookDao: NotebookDao get() = explicitNotebookDao ?: databaseProvider?.invoke()?.notebookDao()
+        ?: error("No database or DAO provided")
+    private val tagDao: TagDao get() = explicitTagDao ?: databaseProvider?.invoke()?.tagDao()
+        ?: error("No database or DAO provided")
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    override fun getAllEntries(): Flow<List<DiaryEntry>> {
-        return entryDao.getAllEntriesFlow().map { entities ->
-            entities.map { entity ->
-                val tags = tagDao.getTagsForEntry(entity.id)
-                val media = decodeMediaList(entity.mediaUrisJson)
-                entity.toDomain(tags, media)
+    private suspend fun getTagsForEntriesBatched(entryIds: List<String>): Map<String, List<String>> {
+        if (entryIds.isEmpty()) return emptyMap()
+        val result = mutableMapOf<String, MutableList<String>>()
+        entryIds.chunked(500).forEach { chunk ->
+            val pairs = tagDao.getTagsForEntries(chunk)
+            for (pair in pairs) {
+                result.getOrPut(pair.entryId) { mutableListOf() }.add(pair.tagName)
             }
         }
+        return result
+    }
+
+    private suspend fun mapEntitiesToDomain(entities: List<DiaryEntryEntity>): List<DiaryEntry> {
+        if (entities.isEmpty()) return emptyList()
+        val tagsMap = getTagsForEntriesBatched(entities.map { it.id })
+        return entities.map { entity ->
+            val tags = tagsMap[entity.id] ?: emptyList()
+            val media = decodeMediaList(entity.mediaUrisJson)
+            entity.toDomain(tags, media)
+        }
+    }
+
+    override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> {
+        return entryDao.getAllEntriesFlow(isArchived)
+            .map { entities -> mapEntitiesToDomain(entities) }
+            .flowOn(Dispatchers.IO)
     }
 
     override fun getEntryById(id: String): Flow<DiaryEntry?> {
@@ -72,7 +118,7 @@ class DiaryRepositoryImpl(
                 val media = decodeMediaList(entity.mediaUrisJson)
                 entity.toDomain(tags, media)
             }
-        }
+        }.flowOn(Dispatchers.IO)
     }
 
     override suspend fun getEntryByIdDirect(id: String): DiaryEntry? {
@@ -82,45 +128,29 @@ class DiaryRepositoryImpl(
         return entity.toDomain(tags, media)
     }
 
-    override fun getEntriesByNotebook(notebookId: String): Flow<List<DiaryEntry>> {
-        return entryDao.getEntriesByNotebookFlow(notebookId).map { entities ->
-            entities.map { entity ->
-                val tags = tagDao.getTagsForEntry(entity.id)
-                val media = decodeMediaList(entity.mediaUrisJson)
-                entity.toDomain(tags, media)
-            }
-        }
+    override fun getEntriesByNotebook(notebookId: String, isArchived: Boolean): Flow<List<DiaryEntry>> {
+        return entryDao.getEntriesByNotebookFlow(notebookId, isArchived)
+            .map { entities -> mapEntitiesToDomain(entities) }
+            .flowOn(Dispatchers.IO)
     }
 
-    override fun getEntriesByTag(tagName: String): Flow<List<DiaryEntry>> {
-        return entryDao.getEntriesByTagFlow(tagName.lowercase()).map { entities ->
-            entities.map { entity ->
-                val tags = tagDao.getTagsForEntry(entity.id)
-                val media = decodeMediaList(entity.mediaUrisJson)
-                entity.toDomain(tags, media)
-            }
-        }
+    override fun getEntriesByTag(tagName: String, isArchived: Boolean): Flow<List<DiaryEntry>> {
+        return entryDao.getEntriesByTagFlow(tagName.lowercase(), isArchived)
+            .map { entities -> mapEntitiesToDomain(entities) }
+            .flowOn(Dispatchers.IO)
     }
 
-    override fun searchEntries(query: String): Flow<List<DiaryEntry>> {
-        if (query.isBlank()) return getAllEntries()
-        return entryDao.searchEntriesFlow(query.trim()).map { entities ->
-            entities.map { entity ->
-                val tags = tagDao.getTagsForEntry(entity.id)
-                val media = decodeMediaList(entity.mediaUrisJson)
-                entity.toDomain(tags, media)
-            }
-        }
+    override fun searchEntries(query: String, isArchived: Boolean): Flow<List<DiaryEntry>> {
+        if (query.isBlank()) return getAllEntries(isArchived)
+        return entryDao.searchEntriesFlow(query.trim(), isArchived)
+            .map { entities -> mapEntitiesToDomain(entities) }
+            .flowOn(Dispatchers.IO)
     }
 
-    override fun getEntriesInRange(startTime: Long, endTime: Long): Flow<List<DiaryEntry>> {
-        return entryDao.getEntriesInRangeFlow(startTime, endTime).map { entities ->
-            entities.map { entity ->
-                val tags = tagDao.getTagsForEntry(entity.id)
-                val media = decodeMediaList(entity.mediaUrisJson)
-                entity.toDomain(tags, media)
-            }
-        }
+    override fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean): Flow<List<DiaryEntry>> {
+        return entryDao.getEntriesInRangeFlow(startTime, endTime, isArchived)
+            .map { entities -> mapEntitiesToDomain(entities) }
+            .flowOn(Dispatchers.IO)
     }
 
     override suspend fun saveEntry(entry: DiaryEntry): String {
@@ -174,6 +204,32 @@ class DiaryRepositoryImpl(
         tagDao.deleteCrossRefsForEntry(id)
         tagDao.recalculateTagCounts()
         tagDao.cleanupUnusedTags()
+    }
+
+    override suspend fun deleteEntries(entryIds: List<String>) {
+        if (entryIds.isEmpty()) return
+        entryIds.chunked(500).forEach { chunk ->
+            for (id in chunk) {
+                tagDao.deleteCrossRefsForEntry(id)
+            }
+            entryDao.deleteEntriesByIds(chunk)
+        }
+        tagDao.recalculateTagCounts()
+        tagDao.cleanupUnusedTags()
+    }
+
+    override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {
+        if (entryIds.isEmpty()) return
+        entryIds.chunked(500).forEach { chunk ->
+            entryDao.updateArchiveStatus(chunk, isArchived)
+        }
+    }
+
+    override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {
+        if (entryIds.isEmpty()) return
+        entryIds.chunked(500).forEach { chunk ->
+            entryDao.updateNotebookForEntries(chunk, notebookId)
+        }
     }
 
     // Notebooks

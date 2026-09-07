@@ -1,7 +1,9 @@
 package com.frictionfree.diary.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
@@ -39,11 +43,15 @@ import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.utils.DateFormatters
 import java.io.File
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EntryCard(
     entry: DiaryEntry,
     notebookName: String? = null,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    isSelected: Boolean = false,
+    isInSelectionMode: Boolean = false,
     onTagClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -53,14 +61,33 @@ fun EntryCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isInSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onClick() },
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+
             // Left color accent bar
             if (hasColor) {
                 Box(
@@ -76,7 +103,7 @@ fun EntryCard(
                     .fillMaxWidth()
                     .padding(14.dp)
             ) {
-                // Top row: Date/time, notebook name, pinned icon
+                // Top row: Date/time, notebook name, pinned icon, archive icon
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -89,6 +116,23 @@ fun EntryCard(
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (entry.isArchived) {
+                            Icon(
+                                Icons.Default.Archive,
+                                contentDescription = "Archived",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .padding(end = 2.dp)
+                            )
+                            Text(
+                                text = "Archived",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                        }
+
                         if (entry.locationName != null) {
                             Icon(
                                 Icons.Default.LocationOn,

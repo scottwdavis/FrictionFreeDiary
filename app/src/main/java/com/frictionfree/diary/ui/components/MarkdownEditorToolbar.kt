@@ -31,7 +31,7 @@ import java.util.Locale
 @Composable
 fun MarkdownEditorToolbar(
     modifier: Modifier = Modifier,
-    onInsertText: (String, Int) -> Unit // (text, cursorOffsetFromStart)
+    onAction: (MarkdownAction) -> Unit
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -45,7 +45,7 @@ fun MarkdownEditorToolbar(
         ) {
             // Bold
             FilledTonalIconButton(
-                onClick = { onInsertText("****", 2) },
+                onClick = { onAction(MarkdownAction.BOLD) },
                 modifier = Modifier.size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -56,7 +56,7 @@ fun MarkdownEditorToolbar(
 
             // Italic
             FilledTonalIconButton(
-                onClick = { onInsertText("**", 1) },
+                onClick = { onAction(MarkdownAction.ITALIC) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -67,7 +67,7 @@ fun MarkdownEditorToolbar(
 
             // Heading
             FilledTonalIconButton(
-                onClick = { onInsertText("\n### ", 5) },
+                onClick = { onAction(MarkdownAction.HEADING) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -78,7 +78,7 @@ fun MarkdownEditorToolbar(
 
             // Bullet List
             FilledTonalIconButton(
-                onClick = { onInsertText("\n- ", 3) },
+                onClick = { onAction(MarkdownAction.BULLET_LIST) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -89,7 +89,7 @@ fun MarkdownEditorToolbar(
 
             // Task Checkbox
             FilledTonalIconButton(
-                onClick = { onInsertText("\n- [ ] ", 7) },
+                onClick = { onAction(MarkdownAction.TASK_CHECKBOX) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -100,7 +100,7 @@ fun MarkdownEditorToolbar(
 
             // Quote
             FilledTonalIconButton(
-                onClick = { onInsertText("\n> ", 3) },
+                onClick = { onAction(MarkdownAction.QUOTE) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -111,7 +111,7 @@ fun MarkdownEditorToolbar(
 
             // Code
             FilledTonalIconButton(
-                onClick = { onInsertText("\n```\n\n```", 5) },
+                onClick = { onAction(MarkdownAction.CODE) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -122,7 +122,7 @@ fun MarkdownEditorToolbar(
 
             // Hashtag
             FilledTonalIconButton(
-                onClick = { onInsertText(" #", 2) },
+                onClick = { onAction(MarkdownAction.HASHTAG) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -133,10 +133,7 @@ fun MarkdownEditorToolbar(
 
             // Insert Current Time
             FilledTonalIconButton(
-                onClick = {
-                    val timeString = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                    onInsertText(" **$timeString** - ", timeString.length + 7)
-                },
+                onClick = { onAction(MarkdownAction.TIMESTAMP) },
                 modifier = Modifier.padding(start = 6.dp).size(38.dp),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surface

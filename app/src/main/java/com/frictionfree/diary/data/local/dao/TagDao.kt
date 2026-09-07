@@ -8,6 +8,11 @@ import com.frictionfree.diary.data.local.entities.EntryTagCrossRef
 import com.frictionfree.diary.data.local.entities.TagEntity
 import kotlinx.coroutines.flow.Flow
 
+data class EntryTagTuple(
+    val entryId: String,
+    val tagName: String
+)
+
 @Dao
 interface TagDao {
     @Query("SELECT * FROM tags ORDER BY usageCount DESC, name ASC")
@@ -18,6 +23,9 @@ interface TagDao {
 
     @Query("SELECT tagName FROM entry_tag_cross_ref WHERE entryId = :entryId")
     suspend fun getTagsForEntry(entryId: String): List<String>
+
+    @Query("SELECT entryId, tagName FROM entry_tag_cross_ref WHERE entryId IN (:entryIds)")
+    suspend fun getTagsForEntries(entryIds: List<String>): List<EntryTagTuple>
 
     @Query("SELECT tagName FROM entry_tag_cross_ref WHERE entryId = :entryId")
     fun getTagsForEntryFlow(entryId: String): Flow<List<String>>

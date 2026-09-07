@@ -12,6 +12,12 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
 object EncryptionHelper {
+    init {
+        try {
+            System.loadLibrary("sqlcipher")
+        } catch (_: Throwable) {}
+    }
+
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "FrictionFreeDiaryKey"
     private const val PREFS_FILE = "friction_free_secure_prefs"
@@ -78,11 +84,19 @@ object EncryptionHelper {
         return getSecurePrefs(context).getString(PREF_PIN_HASH, null) != null
     }
 
-    fun getDatabasePassphrase(context: Context): ByteArray? {
-        if (!isEncryptionEnabled(context)) return null
+    fun getStoredPassphraseString(context: Context): String? {
         val prefs = getSecurePrefs(context)
-        val hex = prefs.getString(PREF_DB_PASSPHRASE, null) ?: return null
-        return hexToBytes(hex)
+        return prefs.getString(PREF_DB_PASSPHRASE, null)
+    }
+
+    fun getPassphraseString(context: Context): String? {
+        if (!isEncryptionEnabled(context)) return null
+        return getStoredPassphraseString(context)
+    }
+
+    fun getDatabasePassphrase(context: Context): ByteArray? {
+        val passphraseString = getPassphraseString(context) ?: return null
+        return passphraseString.toByteArray(Charsets.UTF_8)
     }
 
     private fun hashWithSalt(input: String, saltHex: String): String {

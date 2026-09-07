@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.frictionfree.diary.data.local.DiaryDatabase
 import com.frictionfree.diary.data.repository.AppFontFamily
 import com.frictionfree.diary.data.repository.AppFontSize
 import com.frictionfree.diary.data.repository.AppTheme
@@ -86,10 +87,12 @@ class SettingsViewModel(
         if (enabled && !pin.isNullOrBlank()) {
             EncryptionHelper.setPin(context, pin)
             settingsRepository.setBiometricsEnabled(true)
+            DiaryDatabase.closeAndReset()
             _statusMessage.value = "Encryption and Biometric lock enabled."
         } else if (!enabled) {
             EncryptionHelper.setEncryptionEnabled(context, false)
             settingsRepository.setBiometricsEnabled(false)
+            DiaryDatabase.closeAndReset()
             _statusMessage.value = "Encryption lock disabled."
         }
     }

@@ -18,5 +18,6 @@ data class DiaryEntry(
     val tags: List<String> = emptyList(),
     val isPinned: Boolean = false,
     val isFavorite: Boolean = false,
-    val moodEmoji: String? = null
+    val moodEmoji: String? = null,
+    val isArchived: Boolean = false
 )

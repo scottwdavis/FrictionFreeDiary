@@ -5,6 +5,7 @@ import android.location.Location
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.frictionfree.diary.DiaryApplication
 import com.frictionfree.diary.data.model.DiaryEntry
 import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.data.model.Notebook
@@ -35,7 +36,8 @@ data class EditorUiState(
     val isFetchingLocation: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val isPreviewMode: Boolean = false,
-    val isSaved: Boolean = false
+    val isSaved: Boolean = false,
+    val isArchived: Boolean = false
 )
 
 class EditorViewModel(
@@ -67,7 +69,8 @@ class EditorViewModel(
                     longitude = existing.longitude,
                     locationName = existing.locationName,
                     createdAt = existing.createdAt,
-                    isPreviewMode = existing.content.isNotBlank()
+                    isPreviewMode = existing.content.isNotBlank(),
+                    isArchived = existing.isArchived
                 )
             }
         }
@@ -173,7 +176,10 @@ class EditorViewModel(
             return
         }
 
-        viewModelScope.launch {
+        val appScope = (getApplication<Application>() as? DiaryApplication)?.applicationScope
+        val scope = appScope ?: viewModelScope
+
+        scope.launch {
             val entry = DiaryEntry(
                 id = state.entryId,
                 title = state.title.trim(),
@@ -187,7 +193,8 @@ class EditorViewModel(
                 locationName = state.locationName,
                 mediaUris = state.mediaUris,
                 isPinned = state.isPinned,
-                isFavorite = state.isFavorite
+                isFavorite = state.isFavorite,
+                isArchived = state.isArchived
             )
             diaryRepository.saveEntry(entry)
             _uiState.value = _uiState.value.copy(isSaved = true)
@@ -195,8 +202,14 @@ class EditorViewModel(
         }
     }
 
+    fun toggleArchived() {
+        _uiState.value = _uiState.value.copy(isArchived = !_uiState.value.isArchived)
+    }
+
     fun deleteEntry(onComplete: () -> Unit) {
-        viewModelScope.launch {
+        val appScope = (getApplication<Application>() as? DiaryApplication)?.applicationScope
+        val scope = appScope ?: viewModelScope
+        scope.launch {
             diaryRepository.deleteEntry(_uiState.value.entryId)
             onComplete()
         }

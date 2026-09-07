@@ -109,10 +109,34 @@ class MainActivity : FragmentActivity() {
                         currentRoute = currentRoute,
                         hideNavigationSuite = isFullScreen,
                         onNavigateToDestination = { dest ->
-                            navController.navigate(dest.route) {
-                                popUpTo(Screen.Timeline.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            val current = navController.currentDestination?.route
+                            val isCurrentlyInEditor = current?.startsWith("editor") == true
+
+                            if (dest.route == Screen.Timeline.route) {
+                                // Navigating to Stream (Timeline):
+                                // Always pop back to Timeline root cleanly without restoring child/editor states.
+                                navController.popBackStack(Screen.Timeline.route, inclusive = false)
+                            } else {
+                                if (isCurrentlyInEditor) {
+                                    // If in Editor, first try popping back if target destination is already on backstack
+                                    val poppedToTarget = navController.popBackStack(dest.route, inclusive = false)
+                                    if (!poppedToTarget) {
+                                        // Otherwise pop Editor off to Timeline so Editor is never saved in backstack state
+                                        navController.popBackStack(Screen.Timeline.route, inclusive = false)
+                                        navController.navigate(dest.route) {
+                                            popUpTo(Screen.Timeline.route) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                } else {
+                                    // Standard tab switching
+                                    navController.navigate(dest.route) {
+                                        popUpTo(Screen.Timeline.route) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                }
                             }
                         }
                     ) {

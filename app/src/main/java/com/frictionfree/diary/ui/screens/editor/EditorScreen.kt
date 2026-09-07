@@ -33,12 +33,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
@@ -80,6 +82,7 @@ import coil.compose.AsyncImage
 import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.ui.components.ColorPickerRow
 import com.frictionfree.diary.ui.components.MarkdownEditorToolbar
+import com.frictionfree.diary.ui.components.MarkdownFormatter
 import com.frictionfree.diary.ui.components.MarkdownInlineText
 import com.frictionfree.diary.ui.components.MarkdownRenderer
 import com.frictionfree.diary.utils.DateFormatters
@@ -99,13 +102,19 @@ fun EditorScreen(
     var showNotebookMenu by remember { mutableStateOf(false) }
 
     // Content text field state with cursor position tracking for Markdown toolbar
-    var contentFieldValue by remember(uiState.content) {
+    var contentFieldValue by remember(uiState.entryId) {
         mutableStateOf(
             TextFieldValue(
                 text = uiState.content,
                 selection = TextRange(uiState.content.length)
             )
         )
+    }
+
+    LaunchedEffect(uiState.content) {
+        if (uiState.content != contentFieldValue.text) {
+            contentFieldValue = contentFieldValue.copy(text = uiState.content)
+        }
     }
 
     // Photo picker launcher
@@ -220,6 +229,15 @@ fun EditorScreen(
                         )
                     }
 
+                    // Archive toggle
+                    IconButton(onClick = { viewModel.toggleArchived() }) {
+                        Icon(
+                            imageVector = if (uiState.isArchived) Icons.Filled.Archive else Icons.Outlined.Archive,
+                            contentDescription = if (uiState.isArchived) "Unarchive entry" else "Archive entry",
+                            tint = if (uiState.isArchived) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Markdown Preview toggle
                     IconButton(onClick = { viewModel.togglePreviewMode() }) {
                         Icon(
@@ -254,18 +272,10 @@ fun EditorScreen(
 
                         // Formatting tools
                         MarkdownEditorToolbar(
-                            onInsertText = { insertText, cursorOffset ->
-                                val currentText = contentFieldValue.text
-                                val start = contentFieldValue.selection.min
-                                val end = contentFieldValue.selection.max
-                                val newText = currentText.replaceRange(start, end, insertText)
-                                val newCursorPos = start + cursorOffset
-                                val updatedValue = TextFieldValue(
-                                    text = newText,
-                                    selection = TextRange(newCursorPos)
-                                )
+                            onAction = { action ->
+                                val updatedValue = MarkdownFormatter.applyAction(contentFieldValue, action)
                                 contentFieldValue = updatedValue
-                                viewModel.updateContent(newText)
+                                viewModel.updateContent(updatedValue.text)
                             }
                         )
 

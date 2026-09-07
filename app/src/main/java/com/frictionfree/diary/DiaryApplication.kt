@@ -1,6 +1,7 @@
 package com.frictionfree.diary
 
 import android.app.Application
+import android.util.Log
 import com.frictionfree.diary.data.local.DiaryDatabase
 import com.frictionfree.diary.data.repository.DiaryRepository
 import com.frictionfree.diary.data.repository.DiaryRepositoryImpl
@@ -13,27 +14,31 @@ import kotlinx.coroutines.launch
 
 class DiaryApplication : Application() {
 
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(this)
     }
 
-    val database: DiaryDatabase by lazy {
-        val passphrase = EncryptionHelper.getDatabasePassphrase(this)
-        DiaryDatabase.getInstance(this, passphrase)
-    }
+    val database: DiaryDatabase
+        get() {
+            val passphrase = EncryptionHelper.getDatabasePassphrase(this)
+            return DiaryDatabase.getInstance(this, passphrase)
+        }
 
     val diaryRepository: DiaryRepository by lazy {
         DiaryRepositoryImpl(
-            entryDao = database.entryDao(),
-            notebookDao = database.notebookDao(),
-            tagDao = database.tagDao()
+            databaseProvider = { database }
         )
     }
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            System.loadLibrary("sqlcipher")
+        } catch (t: Throwable) {
+            Log.e("DiaryApplication", "Failed to load sqlcipher native library", t)
+        }
         // Ensure default notebooks are initialized
         applicationScope.launch {
             diaryRepository.ensureDefaultNotebooks()

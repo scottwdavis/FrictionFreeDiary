@@ -80,13 +80,13 @@ class DayOneImporterTest {
         val savedNotebooks = mutableListOf<Notebook>()
 
         val fakeRepository = object : DiaryRepository {
-            override fun getAllEntries(): Flow<List<DiaryEntry>> = flowOf(savedEntries)
+            override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(savedEntries)
             override fun getEntryById(id: String): Flow<DiaryEntry?> = flowOf(savedEntries.firstOrNull { it.id == id })
             override suspend fun getEntryByIdDirect(id: String): DiaryEntry? = savedEntries.firstOrNull { it.id == id }
-            override fun getEntriesByNotebook(notebookId: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun getEntriesByTag(tagName: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun searchEntries(query: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun getEntriesInRange(startTime: Long, endTime: Long): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesByNotebook(notebookId: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesByTag(tagName: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun searchEntries(query: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
 
             override suspend fun saveEntry(entry: DiaryEntry): String {
                 savedEntries.add(entry)
@@ -94,6 +94,9 @@ class DayOneImporterTest {
             }
 
             override suspend fun deleteEntry(id: String) {}
+            override suspend fun deleteEntries(entryIds: List<String>) {}
+            override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
+            override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)
@@ -150,18 +153,21 @@ class DayOneImporterTest {
         val savedNotebooks = mutableListOf<Notebook>()
 
         val fakeRepo = object : DiaryRepository {
-            override fun getAllEntries(): Flow<List<DiaryEntry>> = flowOf(savedEntries)
+            override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(savedEntries)
             override fun getEntryById(id: String): Flow<DiaryEntry?> = flowOf(savedEntries.firstOrNull { it.id == id })
             override suspend fun getEntryByIdDirect(id: String): DiaryEntry? = savedEntries.firstOrNull { it.id == id }
-            override fun getEntriesByNotebook(notebookId: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun getEntriesByTag(tagName: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun searchEntries(query: String): Flow<List<DiaryEntry>> = flowOf(emptyList())
-            override fun getEntriesInRange(startTime: Long, endTime: Long): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesByNotebook(notebookId: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesByTag(tagName: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun searchEntries(query: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
             override suspend fun saveEntry(entry: DiaryEntry): String {
                 savedEntries.add(entry)
                 return entry.id
             }
             override suspend fun deleteEntry(id: String) {}
+            override suspend fun deleteEntries(entryIds: List<String>) {}
+            override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
+            override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)

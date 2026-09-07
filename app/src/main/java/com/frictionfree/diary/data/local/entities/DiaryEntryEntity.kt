@@ -19,7 +19,8 @@ import com.frictionfree.diary.data.model.DiaryEntry
     indices = [
         Index(value = ["notebookId"]),
         Index(value = ["createdAt"]),
-        Index(value = ["colorHex"])
+        Index(value = ["colorHex"]),
+        Index(value = ["isArchived"])
     ]
 )
 data class DiaryEntryEntity(
@@ -37,7 +38,8 @@ data class DiaryEntryEntity(
     val mediaUrisJson: String = "[]",
     val isPinned: Boolean = false,
     val isFavorite: Boolean = false,
-    val moodEmoji: String? = null
+    val moodEmoji: String? = null,
+    val isArchived: Boolean = false
 ) {
     fun toDomain(tags: List<String> = emptyList(), mediaList: List<String> = emptyList()): DiaryEntry {
         return DiaryEntry(
@@ -55,7 +57,8 @@ data class DiaryEntryEntity(
             tags = tags,
             isPinned = isPinned,
             isFavorite = isFavorite,
-            moodEmoji = moodEmoji
+            moodEmoji = moodEmoji,
+            isArchived = isArchived
         )
     }
 
@@ -75,7 +78,8 @@ data class DiaryEntryEntity(
                 mediaUrisJson = mediaJson,
                 isPinned = entry.isPinned,
                 isFavorite = entry.isFavorite,
-                moodEmoji = entry.moodEmoji
+                moodEmoji = entry.moodEmoji,
+                isArchived = entry.isArchived
             )
         }
     }

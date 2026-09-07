@@ -11,11 +11,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface EntryDao {
-    @Query("SELECT * FROM entries ORDER BY isPinned DESC, createdAt DESC")
-    fun getAllEntriesFlow(): Flow<List<DiaryEntryEntity>>
+    @Query("SELECT * FROM entries WHERE isArchived = :isArchived ORDER BY isPinned DESC, createdAt DESC")
+    fun getAllEntriesFlow(isArchived: Boolean = false): Flow<List<DiaryEntryEntity>>
 
-    @Query("SELECT * FROM entries ORDER BY isPinned DESC, createdAt DESC")
-    suspend fun getAllEntries(): List<DiaryEntryEntity>
+    @Query("SELECT * FROM entries WHERE isArchived = :isArchived ORDER BY isPinned DESC, createdAt DESC")
+    suspend fun getAllEntries(isArchived: Boolean = false): List<DiaryEntryEntity>
 
     @Query("SELECT * FROM entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: String): DiaryEntryEntity?
@@ -23,37 +23,38 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id LIMIT 1")
     fun getEntryByIdFlow(id: String): Flow<DiaryEntryEntity?>
 
-    @Query("SELECT * FROM entries WHERE notebookId = :notebookId ORDER BY isPinned DESC, createdAt DESC")
-    fun getEntriesByNotebookFlow(notebookId: String): Flow<List<DiaryEntryEntity>>
+    @Query("SELECT * FROM entries WHERE notebookId = :notebookId AND isArchived = :isArchived ORDER BY isPinned DESC, createdAt DESC")
+    fun getEntriesByNotebookFlow(notebookId: String, isArchived: Boolean = false): Flow<List<DiaryEntryEntity>>
 
     @Query("""
         SELECT e.* FROM entries e
         INNER JOIN entry_tag_cross_ref r ON e.id = r.entryId
-        WHERE r.tagName = :tagName
+        WHERE r.tagName = :tagName AND e.isArchived = :isArchived
         ORDER BY e.isPinned DESC, e.createdAt DESC
     """)
-    fun getEntriesByTagFlow(tagName: String): Flow<List<DiaryEntryEntity>>
+    fun getEntriesByTagFlow(tagName: String, isArchived: Boolean = false): Flow<List<DiaryEntryEntity>>
 
     @Query("""
         SELECT * FROM entries
         WHERE (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%')
+          AND isArchived = :isArchived
         ORDER BY isPinned DESC, createdAt DESC
     """)
-    fun searchEntriesFlow(query: String): Flow<List<DiaryEntryEntity>>
+    fun searchEntriesFlow(query: String, isArchived: Boolean = false): Flow<List<DiaryEntryEntity>>
 
     @Query("""
         SELECT * FROM entries
-        WHERE createdAt >= :startTime AND createdAt <= :endTime
+        WHERE createdAt >= :startTime AND createdAt <= :endTime AND isArchived = :isArchived
         ORDER BY createdAt ASC
     """)
-    fun getEntriesInRangeFlow(startTime: Long, endTime: Long): Flow<List<DiaryEntryEntity>>
+    fun getEntriesInRangeFlow(startTime: Long, endTime: Long, isArchived: Boolean = false): Flow<List<DiaryEntryEntity>>
 
     @Query("""
         SELECT * FROM entries
-        WHERE createdAt >= :startTime AND createdAt <= :endTime
+        WHERE createdAt >= :startTime AND createdAt <= :endTime AND isArchived = :isArchived
         ORDER BY createdAt ASC
     """)
-    suspend fun getEntriesInRange(startTime: Long, endTime: Long): List<DiaryEntryEntity>
+    suspend fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean = false): List<DiaryEntryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntry(entry: DiaryEntryEntity)
@@ -70,6 +71,15 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteEntryById(id: String)
 
-    @Query("SELECT COUNT(*) FROM entries")
+    @Query("DELETE FROM entries WHERE id IN (:entryIds)")
+    suspend fun deleteEntriesByIds(entryIds: List<String>)
+
+    @Query("UPDATE entries SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id IN (:entryIds)")
+    suspend fun updateArchiveStatus(entryIds: List<String>, isArchived: Boolean, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE entries SET notebookId = :notebookId, updatedAt = :updatedAt WHERE id IN (:entryIds)")
+    suspend fun updateNotebookForEntries(entryIds: List<String>, notebookId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("SELECT COUNT(*) FROM entries WHERE isArchived = 0")
     suspend fun getEntryCount(): Int
 }
