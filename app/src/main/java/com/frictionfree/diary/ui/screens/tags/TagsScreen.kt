@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BubbleChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.Badge
@@ -41,6 +43,10 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.frictionfree.diary.ui.components.TagMapDisplayMode
 import com.frictionfree.diary.ui.components.TagMindMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +61,7 @@ fun TagsScreen(
     onNavigateToEditor: (String?) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var displayMode by remember { mutableStateOf(TagMapDisplayMode.CONSTELLATION) }
 
     Scaffold(
         topBar = {
@@ -128,43 +135,68 @@ fun TagsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Topic Mind Map",
+                                    text = if (displayMode == TagMapDisplayMode.CONSTELLATION) "Constellation Mind Map" else "Topic Bubble Cloud",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${uiState.tags.size} topics • larger bubbles are used more",
+                                    text = if (displayMode == TagMapDisplayMode.CONSTELLATION) {
+                                        "${uiState.tags.size} topics • drag to explore neural web"
+                                    } else {
+                                        "${uiState.tags.size} topics • larger bubbles are used more"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
-                            if (uiState.selectedTag != null) {
-                                TextButton(onClick = { viewModel.selectTag(null) }) {
-                                    Text("Clear Filter")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        displayMode = if (displayMode == TagMapDisplayMode.CONSTELLATION) {
+                                            TagMapDisplayMode.CLOUD
+                                        } else {
+                                            TagMapDisplayMode.CONSTELLATION
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (displayMode == TagMapDisplayMode.CONSTELLATION) Icons.Default.BubbleChart else Icons.Default.AutoAwesome,
+                                        contentDescription = if (displayMode == TagMapDisplayMode.CONSTELLATION) "Switch to Bubble Cloud" else "Switch to Constellation Graph",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                if (uiState.selectedTag != null) {
+                                    TextButton(onClick = { viewModel.selectTag(null) }) {
+                                        Text("Clear")
+                                    }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(
-                                    if (uiState.selectedTag != null) {
-                                        Modifier
-                                            .heightIn(max = 240.dp)
-                                            .verticalScroll(rememberScrollState())
+                                    if (displayMode == TagMapDisplayMode.CLOUD) {
+                                        if (uiState.selectedTag != null) {
+                                            Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())
+                                        } else {
+                                            Modifier.verticalScroll(rememberScrollState())
+                                        }
                                     } else {
-                                        Modifier.verticalScroll(rememberScrollState())
+                                        Modifier
                                     }
                                 )
                         ) {
                             TagMindMap(
                                 tags = uiState.tags,
                                 selectedTag = uiState.selectedTag,
-                                onTagSelected = { tag -> viewModel.selectTag(tag) }
+                                onTagSelected = { tag -> viewModel.selectTag(tag) },
+                                displayMode = displayMode
                             )
                         }
                     }

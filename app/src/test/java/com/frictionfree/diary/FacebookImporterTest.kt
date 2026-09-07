@@ -267,15 +267,96 @@ class FacebookImporterTest {
         assertEquals(1, savedEntries.size)
 
         val entry = savedEntries[0]
-        // Memory post text should be extracted and not replaced with "Shared photos"
+        // Memory post text should be extracted as a clean blockquote
         assertTrue(entry.content.contains("Wedgemount Lake"))
-        // Boilerplate headers like "8 Years Ago" or dates should NOT be included
-        assertTrue(!entry.content.contains("8 Years Ago"))
-        assertTrue(!entry.content.contains("Sep 03, 2016"))
-        // Derived title should be derived from the first line of the caption
+        assertTrue(entry.content.contains("> **Shared Memory (Sep 03, 2016 • 8 Years Ago):**"))
+        // Derived title should be derived from the first line of the memory caption
         assertTrue(entry.title.contains("Wedgemount Lake"))
         // Photo from map attached
         assertEquals(listOf("/data/media/wedgemount.jpg"), entry.mediaUris)
+    }
+
+    @Test
+    fun testRepostWithCommentExtraction() = runBlocking {
+        // Facebook Repost of memory with additional comment
+        val json = """
+            [
+              {
+                "timestamp": 1725134254,
+                "title": "Scott Davis shared a memory.",
+                "data": [
+                  {
+                    "post": "If me from 5 years ago could see what I am doing now, his mind would be blown."
+                  }
+                ],
+                "attachments": [
+                  {
+                    "data": [
+                      {
+                        "text": "5 Years Ago"
+                      },
+                      {
+                        "text": "Scott Davis updated his status."
+                      },
+                      {
+                        "text": "Aug 31, 2019 4:37:34 pm"
+                      },
+                      {
+                        "text": "Things I have learned how to do in the last 18 months:\n- built a custom CRM\n- designed an automation engine"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val savedEntries = mutableListOf<DiaryEntry>()
+        val fakeRepo = object : DiaryRepository {
+            override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(savedEntries)
+            override fun getEntryById(id: String): Flow<DiaryEntry?> = flowOf(null)
+            override suspend fun getEntryByIdDirect(id: String): DiaryEntry? = null
+            override fun getEntriesByNotebook(notebookId: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesByTag(tagName: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun searchEntries(query: String, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override fun getEntriesInRange(startTime: Long, endTime: Long, isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(emptyList())
+            override suspend fun saveEntry(entry: DiaryEntry): String {
+                savedEntries.add(entry)
+                return entry.id
+            }
+            override suspend fun deleteEntry(id: String) {}
+            override suspend fun deleteEntries(entryIds: List<String>) {}
+            override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
+            override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
+            override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(emptyList())
+            override fun getNotebookEntryCounts(): Flow<Map<String, Int>> = flowOf(emptyMap())
+            override suspend fun saveNotebook(notebook: Notebook) {}
+            override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {}
+            override suspend fun getNotebookById(id: String): Notebook? = null
+            override suspend fun ensureDefaultNotebooks() {}
+            override fun getAllTags(): Flow<List<Tag>> = flowOf(emptyList())
+            override suspend fun getExportData(): ExportData = ExportData()
+            override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean, onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?) {}
+        }
+
+        val result = FacebookImporter.importJsonContent(
+            jsonContent = json,
+            notebookName = "Facebook",
+            photoPathMap = emptyMap(),
+            diaryRepository = fakeRepo
+        )
+
+        assertEquals(1, result.entryCount)
+        assertEquals(1, savedEntries.size)
+
+        val entry = savedEntries[0]
+        // User's own comment should be at the top
+        assertTrue(entry.content.startsWith("If me from 5 years ago could see"))
+        // Quoted block with date and relative time should be appended
+        assertTrue(entry.content.contains("> **Shared Memory (Aug 31, 2019 • 5 Years Ago):**"))
+        assertTrue(entry.content.contains("> Things I have learned how to do"))
+        // Title should be derived from user's comment
+        assertTrue(entry.title.contains("If me from 5 years ago"))
     }
 
     @Test

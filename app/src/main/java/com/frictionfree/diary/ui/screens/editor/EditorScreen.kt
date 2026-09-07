@@ -173,7 +173,8 @@ fun EditorScreen(
     val selectedNotebook = notebooks.firstOrNull { it.id == uiState.selectedNotebookId }
 
     BackHandler {
-        viewModel.saveEntry { onNavigateBack() }
+        viewModel.saveEntry()
+        onNavigateBack()
     }
 
     // Automatically save entry whenever navigating away (e.g. tapping bottom nav bar items)
@@ -217,7 +218,8 @@ fun EditorScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.saveEntry { onNavigateBack() }
+                        viewModel.saveEntry()
+                        onNavigateBack()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }

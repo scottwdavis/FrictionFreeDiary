@@ -323,16 +323,26 @@ object FacebookImporter {
         // 2. Map and save entries
         posts.forEachIndexed { index, post ->
             val rawPostText = post.data.mapNotNull { it.post }.firstOrNull() ?: ""
-            var cleanPostText = repairFacebookEncoding(rawPostText).trim()
+            val cleanPostText = repairFacebookEncoding(rawPostText).trim()
             val rawTitle = repairFacebookEncoding(post.title).trim()
 
-            // Resolve photos from attachments
+            // Resolve attachments: photos, memory metadata, shared posts, external links
             val mediaUris = mutableListOf<String>()
+            val isMemoryPost = rawTitle.contains("shared a memory", ignoreCase = true)
+            var memoryRelativeTime: String? = null
+            var memoryOriginalDate: String? = null
+            val memoryTexts = mutableListOf<String>()
+            val photoCaptions = mutableListOf<String>()
+            val sharedPostBlocks = mutableListOf<String>()
             val externalLinks = mutableListOf<String>()
-            val attachmentCaptions = mutableListOf<String>()
 
             post.attachments.forEach { attachment ->
+                var attRelTime: String? = null
+                var attOrigDate: String? = null
+                val attTexts = mutableListOf<String>()
+
                 attachment.data.forEach { item ->
+                    // Photos
                     item.media?.uri?.let { uriStr ->
                         val normUri = uriStr.replace('\\', '/').trimStart('/')
                         val fileName = File(normUri).name.lowercase()
@@ -342,40 +352,93 @@ object FacebookImporter {
                             photoCount++
                         }
                     }
-                    item.media?.description?.let { desc ->
-                        val cleanDesc = repairFacebookEncoding(desc).trim()
-                        if (cleanDesc.isNotBlank() && !attachmentCaptions.contains(cleanDesc)) {
-                            attachmentCaptions.add(cleanDesc)
+
+                    // Text items
+                    item.text?.let { rawTxt ->
+                        val cleanTxt = repairFacebookEncoding(rawTxt).trim()
+                        if (cleanTxt.matches(relativeTimeRegex)) {
+                            attRelTime = cleanTxt
+                        } else if (cleanTxt.matches(dateRegex)) {
+                            attOrigDate = cleanTxt
+                        } else if (isValuableCaption(cleanTxt)) {
+                            attTexts.add(cleanTxt)
                         }
                     }
-                    item.text?.let { txt ->
-                        val cleanTxt = repairFacebookEncoding(txt).trim()
-                        if (isValuableCaption(cleanTxt) && !attachmentCaptions.contains(cleanTxt)) {
-                            attachmentCaptions.add(cleanTxt)
+
+                    // Media descriptions
+                    item.media?.description?.let { rawDesc ->
+                        val cleanDesc = repairFacebookEncoding(rawDesc).trim()
+                        if (isValuableCaption(cleanDesc) && !attTexts.contains(cleanDesc)) {
+                            attTexts.add(cleanDesc)
                         }
                     }
+
+                    // External context (shared posts, reels, web links)
                     item.external_context?.url?.let { linkUrl ->
-                        val linkName = repairFacebookEncoding(item.external_context.name).ifBlank { linkUrl }
-                        externalLinks.add("[$linkName]($linkUrl)")
+                        val linkName = repairFacebookEncoding(item.external_context.name ?: "").trim()
+                        if (linkName.length > 60 || linkName.contains('\n')) {
+                            val quotedCaption = linkName.lines().joinToString("\n") { line ->
+                                if (line.isBlank()) ">" else "> $line"
+                            }
+                            sharedPostBlocks.add("> **Shared Post:**\n$quotedCaption\n>\n> [Original Link]($linkUrl)")
+                        } else {
+                            val displayName = linkName.ifBlank { linkUrl }
+                            externalLinks.add("[$displayName]($linkUrl)")
+                        }
                     }
                 }
-            }
 
-            // If root post body was blank, use captions discovered in attachments/media
-            if (cleanPostText.isBlank() && attachmentCaptions.isNotEmpty()) {
-                cleanPostText = attachmentCaptions.joinToString("\n\n")
-            } else if (cleanPostText.isNotBlank() && attachmentCaptions.isNotEmpty()) {
-                val extraCaptions = attachmentCaptions.filter { !cleanPostText.contains(it) }
-                if (extraCaptions.isNotEmpty()) {
-                    cleanPostText += "\n\n" + extraCaptions.joinToString("\n\n")
+                if (attRelTime != null || attOrigDate != null || isMemoryPost) {
+                    if (attRelTime != null && memoryRelativeTime == null) memoryRelativeTime = attRelTime
+                    if (attOrigDate != null && memoryOriginalDate == null) memoryOriginalDate = attOrigDate
+                    attTexts.forEach { txt ->
+                        if (!memoryTexts.contains(txt)) memoryTexts.add(txt)
+                    }
+                } else {
+                    attTexts.forEach { txt ->
+                        if (!photoCaptions.contains(txt)) photoCaptions.add(txt)
+                    }
                 }
             }
 
             // Construct content
             val contentBuilder = StringBuilder()
+
+            // 1. User's own comment / reflection
             if (cleanPostText.isNotEmpty()) {
                 contentBuilder.append(cleanPostText)
             }
+
+            // 2. Shared Memory Block (formatted as blockquote)
+            val isMemory = memoryRelativeTime != null || memoryOriginalDate != null || (isMemoryPost && memoryTexts.isNotEmpty())
+            if (isMemory && memoryTexts.isNotEmpty()) {
+                val cleanDate = memoryOriginalDate?.replace(Regex("""\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?""", RegexOption.IGNORE_CASE), "")?.trim()
+                val headerParts = listOfNotNull(cleanDate, memoryRelativeTime).filter { it.isNotBlank() }
+                val headerLabel = if (headerParts.isNotEmpty()) "Shared Memory (${headerParts.joinToString(" • ")})" else "Shared Memory"
+
+                val originalBody = memoryTexts.joinToString("\n\n")
+                val quoted = originalBody.lines().joinToString("\n") { line ->
+                    if (line.isBlank()) ">" else "> $line"
+                }
+
+                if (contentBuilder.isNotEmpty()) contentBuilder.append("\n\n")
+                contentBuilder.append("> **$headerLabel:**\n$quoted")
+            } else if (!isMemory && (photoCaptions.isNotEmpty() || memoryTexts.isNotEmpty())) {
+                val allCaptions = (photoCaptions + memoryTexts).distinct()
+                val extraCaptions = allCaptions.filter { !cleanPostText.contains(it) }
+                if (extraCaptions.isNotEmpty()) {
+                    if (contentBuilder.isNotEmpty()) contentBuilder.append("\n\n")
+                    contentBuilder.append(extraCaptions.joinToString("\n\n"))
+                }
+            }
+
+            // 3. Shared external posts / reels
+            if (sharedPostBlocks.isNotEmpty()) {
+                if (contentBuilder.isNotEmpty()) contentBuilder.append("\n\n")
+                contentBuilder.append(sharedPostBlocks.joinToString("\n\n"))
+            }
+
+            // 4. Standard external links
             if (externalLinks.isNotEmpty()) {
                 if (contentBuilder.isNotEmpty()) contentBuilder.append("\n\n")
                 contentBuilder.append(externalLinks.joinToString("\n"))
@@ -394,8 +457,12 @@ object FacebookImporter {
             val epochSeconds = post.timestamp ?: return@forEachIndexed
             val epochMillis = epochSeconds * 1000L
 
-            // Title derivation: clean out generic "X updated his status" boilerplate
-            val derivedTitle = deriveTitle(rawTitle, cleanPostText).ifBlank {
+            // Title derivation
+            val derivedTitle = deriveTitle(
+                rawTitle = rawTitle,
+                postText = cleanPostText,
+                fallbackText = memoryTexts.firstOrNull() ?: photoCaptions.firstOrNull() ?: ""
+            ).ifBlank {
                 if (cleanPostText.isNotBlank()) cleanPostText.take(40).trim()
                 else if (mediaUris.isNotEmpty()) "Shared Photos"
                 else "Facebook Post"
@@ -439,7 +506,7 @@ object FacebookImporter {
         )
     }
 
-    private val boilerplateRegex = Regex("""(?i)^\d+\s+years?\s+ago.*$""")
+    private val relativeTimeRegex = Regex("""(?i)^\d+\s+years?\s+ago.*$""")
     private val dateRegex = Regex("""(?i)^[a-z]{3}\s+\d{1,2},\s+\d{4}.*$""")
 
     /**
@@ -449,7 +516,7 @@ object FacebookImporter {
     private fun isValuableCaption(text: String): Boolean {
         val trimmed = text.trim()
         if (trimmed.length < 3) return false
-        if (trimmed.matches(boilerplateRegex)) return false
+        if (trimmed.matches(relativeTimeRegex)) return false
         if (trimmed.matches(dateRegex)) return false
         val lower = trimmed.lowercase()
         if (lower.endsWith("added a new photo.") ||
@@ -467,10 +534,10 @@ object FacebookImporter {
     /**
      * Determines a clean title for the Facebook entry.
      */
-    private fun deriveTitle(rawTitle: String, postText: String): String {
-        // If postText has a natural first line, use that
-        if (postText.isNotBlank()) {
-            val firstLine = postText.lines().firstOrNull()?.trim() ?: ""
+    private fun deriveTitle(rawTitle: String, postText: String, fallbackText: String = ""): String {
+        val candidate = postText.ifBlank { fallbackText }
+        if (candidate.isNotBlank()) {
+            val firstLine = candidate.lines().firstOrNull()?.trim() ?: ""
             if (firstLine.isNotBlank()) {
                 val clean = firstLine.removePrefix("#").trim()
                 return if (clean.length <= 60) clean else clean.take(57).trimEnd() + "..."
