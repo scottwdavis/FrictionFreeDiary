@@ -19,7 +19,8 @@ import java.util.UUID
 data class NotebooksUiState(
     val notebooks: List<Notebook> = emptyList(),
     val selectedNotebook: Notebook? = null,
-    val notebookEntries: List<DiaryEntry> = emptyList()
+    val notebookEntries: List<DiaryEntry> = emptyList(),
+    val entryCounts: Map<String, Int> = emptyMap()
 )
 
 class NotebooksViewModel(
@@ -30,11 +31,16 @@ class NotebooksViewModel(
 
     val uiState: StateFlow<NotebooksUiState> = _selectedNotebook.flatMapLatest { selected ->
         val entriesFlow = if (selected == null) flowOf(emptyList()) else diaryRepository.getEntriesByNotebook(selected.id)
-        combine(diaryRepository.getAllNotebooks(), entriesFlow) { notebooks, entries ->
+        combine(
+            diaryRepository.getAllNotebooks(),
+            entriesFlow,
+            diaryRepository.getNotebookEntryCounts()
+        ) { notebooks, entries, counts ->
             NotebooksUiState(
                 notebooks = notebooks,
                 selectedNotebook = selected,
-                notebookEntries = entries
+                notebookEntries = entries,
+                entryCounts = counts
             )
         }
     }.stateIn(viewModelScope, SharingStarted.Lazily, NotebooksUiState())
@@ -57,9 +63,9 @@ class NotebooksViewModel(
         }
     }
 
-    fun deleteNotebook(notebookId: String) {
+    fun deleteNotebook(notebookId: String, deleteEntries: Boolean = false, targetNotebookId: String? = null) {
         viewModelScope.launch {
-            diaryRepository.deleteNotebook(notebookId)
+            diaryRepository.deleteNotebook(notebookId, deleteEntries, targetNotebookId)
             if (_selectedNotebook.value?.id == notebookId) {
                 _selectedNotebook.value = null
             }

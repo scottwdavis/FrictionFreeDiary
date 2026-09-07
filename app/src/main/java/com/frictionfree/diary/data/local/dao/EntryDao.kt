@@ -82,4 +82,21 @@ interface EntryDao {
 
     @Query("SELECT COUNT(*) FROM entries WHERE isArchived = 0")
     suspend fun getEntryCount(): Int
+
+    @Query("SELECT notebookId, COUNT(*) as count FROM entries GROUP BY notebookId")
+    fun getNotebookEntryCountsFlow(): Flow<List<NotebookEntryCount>>
+
+    @Query("SELECT COUNT(*) FROM entries WHERE notebookId = :notebookId")
+    suspend fun getEntryCountForNotebook(notebookId: String): Int
+
+    @Query("SELECT id FROM entries WHERE notebookId = :notebookId")
+    suspend fun getEntryIdsByNotebook(notebookId: String): List<String>
+
+    @Query("UPDATE entries SET notebookId = :newNotebookId, updatedAt = :updatedAt WHERE notebookId = :oldNotebookId")
+    suspend fun reassignNotebookForEntries(oldNotebookId: String, newNotebookId: String, updatedAt: Long = System.currentTimeMillis())
 }
+
+data class NotebookEntryCount(
+    val notebookId: String,
+    val count: Int
+)

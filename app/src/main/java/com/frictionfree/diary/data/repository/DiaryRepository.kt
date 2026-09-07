@@ -39,8 +39,9 @@ interface DiaryRepository {
 
     // Notebooks
     fun getAllNotebooks(): Flow<List<Notebook>>
+    fun getNotebookEntryCounts(): Flow<Map<String, Int>>
     suspend fun saveNotebook(notebook: Notebook)
-    suspend fun deleteNotebook(id: String)
+    suspend fun deleteNotebook(id: String, deleteEntries: Boolean = false, targetNotebookId: String? = null)
     suspend fun getNotebookById(id: String): Notebook?
     suspend fun ensureDefaultNotebooks()
 
@@ -238,15 +239,33 @@ class DiaryRepositoryImpl(
         return notebookDao.getAllNotebooksFlow().map { list -> list.map { it.toDomain() } }
     }
 
+    override fun getNotebookEntryCounts(): Flow<Map<String, Int>> {
+        return entryDao.getNotebookEntryCountsFlow()
+            .map { list -> list.associate { it.notebookId to it.count } }
+            .flowOn(Dispatchers.IO)
+    }
+
     override suspend fun saveNotebook(notebook: Notebook) {
         notebookDao.insertNotebook(NotebookEntity.fromDomain(notebook))
     }
 
-    override suspend fun deleteNotebook(id: String) {
-        val notebook = notebookDao.getNotebookById(id)
-        if (notebook != null && !notebook.isDefault) {
-            notebookDao.deleteNotebook(notebook)
+    override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {
+        val notebook = notebookDao.getNotebookById(id) ?: return
+        if (notebook.isDefault) return
+
+        if (deleteEntries) {
+            val entryIds = entryDao.getEntryIdsByNotebook(id)
+            deleteEntries(entryIds)
+        } else {
+            val targetId = if (!targetNotebookId.isNullOrBlank() && targetNotebookId != id) {
+                targetNotebookId
+            } else {
+                notebookDao.getAllNotebooks().firstOrNull { it.isDefault && it.id != id }?.id ?: "default_personal"
+            }
+            entryDao.reassignNotebookForEntries(oldNotebookId = id, newNotebookId = targetId)
         }
+
+        notebookDao.deleteNotebook(notebook)
     }
 
     override suspend fun getNotebookById(id: String): Notebook? {

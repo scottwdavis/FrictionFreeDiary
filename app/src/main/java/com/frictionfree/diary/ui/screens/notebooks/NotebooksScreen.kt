@@ -24,16 +24,23 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,6 +69,7 @@ fun NotebooksScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var notebookToDelete by remember { mutableStateOf<Notebook?>(null) }
 
     Scaffold(
         topBar = {
@@ -118,10 +126,12 @@ fun NotebooksScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(uiState.notebooks, key = { it.id }) { notebook ->
+                        val count = uiState.entryCounts[notebook.id] ?: 0
                         NotebookItemCard(
                             notebook = notebook,
+                            entryCount = count,
                             onClick = { viewModel.selectNotebook(notebook) },
-                            onDelete = { viewModel.deleteNotebook(notebook.id) }
+                            onDelete = { notebookToDelete = notebook }
                         )
                     }
                 }
@@ -176,11 +186,57 @@ fun NotebooksScreen(
             }
         )
     }
+
+    notebookToDelete?.let { notebook ->
+        val count = uiState.entryCounts[notebook.id] ?: 0
+        if (count > 0) {
+            DeleteNotebookWithOptionsDialog(
+                notebook = notebook,
+                entryCount = count,
+                candidateNotebooks = uiState.notebooks.filter { it.id != notebook.id },
+                onDismiss = { notebookToDelete = null },
+                onConfirm = { deleteEntries, targetNotebookId ->
+                    viewModel.deleteNotebook(
+                        notebookId = notebook.id,
+                        deleteEntries = deleteEntries,
+                        targetNotebookId = targetNotebookId
+                    )
+                    notebookToDelete = null
+                }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { notebookToDelete = null },
+                title = { Text("Delete Notebook") },
+                text = { Text("Are you sure you want to delete “${notebook.name}”? This action cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteNotebook(notebook.id)
+                            notebookToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { notebookToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
 private fun NotebookItemCard(
     notebook: Notebook,
+    entryCount: Int,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -199,7 +255,10 @@ private fun NotebookItemCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.weight(1f, fill = false),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
@@ -236,6 +295,11 @@ private fun NotebookItemCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Text(
+                        text = "$entryCount ${if (entryCount == 1) "entry" else "entries"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
 
@@ -250,6 +314,175 @@ private fun NotebookItemCard(
             }
         }
     }
+}
+
+private enum class DeleteNotebookOption {
+    MOVE,
+    DELETE_ALL
+}
+
+@Composable
+private fun DeleteNotebookWithOptionsDialog(
+    notebook: Notebook,
+    entryCount: Int,
+    candidateNotebooks: List<Notebook>,
+    onDismiss: () -> Unit,
+    onConfirm: (deleteEntries: Boolean, targetNotebookId: String?) -> Unit
+) {
+    val defaultTarget = candidateNotebooks.firstOrNull { it.isDefault } ?: candidateNotebooks.firstOrNull()
+    var selectedOption by remember { mutableStateOf(DeleteNotebookOption.MOVE) }
+    var selectedTargetId by remember { mutableStateOf(defaultTarget?.id ?: "default_personal") }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete “${notebook.name}”?") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "This notebook contains $entryCount ${if (entryCount == 1) "entry" else "entries"}. What would you like to do with them?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Option 1: Move entries to another notebook
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = (selectedOption == DeleteNotebookOption.MOVE),
+                            onClick = { selectedOption = DeleteNotebookOption.MOVE }
+                        )
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = (selectedOption == DeleteNotebookOption.MOVE),
+                        onClick = { selectedOption = DeleteNotebookOption.MOVE }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Move entries to another notebook",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Dropdown for target notebook
+                if (selectedOption == DeleteNotebookOption.MOVE && candidateNotebooks.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 36.dp, end = 8.dp, top = 4.dp, bottom = 8.dp)
+                    ) {
+                        val targetNb = candidateNotebooks.find { it.id == selectedTargetId } ?: candidateNotebooks.first()
+                        OutlinedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { dropdownExpanded = true },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = targetNb.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Select target notebook"
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            candidateNotebooks.forEach { target ->
+                                DropdownMenuItem(
+                                    text = { Text(target.name) },
+                                    onClick = {
+                                        selectedTargetId = target.id
+                                        dropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Option 2: Delete entries permanently
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = (selectedOption == DeleteNotebookOption.DELETE_ALL),
+                            onClick = { selectedOption = DeleteNotebookOption.DELETE_ALL }
+                        )
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = (selectedOption == DeleteNotebookOption.DELETE_ALL),
+                        onClick = { selectedOption = DeleteNotebookOption.DELETE_ALL }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Delete all entries permanently",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "All $entryCount ${if (entryCount == 1) "entry" else "entries"} will be deleted.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        selectedOption == DeleteNotebookOption.DELETE_ALL,
+                        if (selectedOption == DeleteNotebookOption.MOVE) selectedTargetId else null
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedOption == DeleteNotebookOption.DELETE_ALL) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    contentColor = if (selectedOption == DeleteNotebookOption.DELETE_ALL) {
+                        MaterialTheme.colorScheme.onError
+                    } else {
+                        MaterialTheme.colorScheme.onPrimary
+                    }
+                )
+            ) {
+                Text(if (selectedOption == DeleteNotebookOption.DELETE_ALL) "Delete Everything" else "Move & Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
