@@ -13,6 +13,7 @@ import java.io.InputStreamReader
 sealed class ImportOutcome {
     data class NativeSuccess(val entryCount: Int) : ImportOutcome()
     data class DayOneSuccess(val entryCount: Int, val notebookName: String, val photoCount: Int) : ImportOutcome()
+    data class FacebookSuccess(val entryCount: Int, val notebookName: String, val photoCount: Int) : ImportOutcome()
     data class Error(val message: String) : ImportOutcome()
 }
 
@@ -43,8 +44,8 @@ object JsonExporter {
     }
 
     /**
-     * Unified importer supporting both native FrictionFree Diary JSON backups
-     * and Day One journal archives (.zip and .json).
+     * Unified importer supporting native FrictionFree Diary JSON backups,
+     * Day One journal archives (.zip and .json), and Facebook data archives (.zip and .json).
      */
     suspend fun importBackupOrArchive(
         context: Context,
@@ -54,12 +55,22 @@ object JsonExporter {
     ): ImportOutcome {
         return try {
             if (isZipFile(context, uri)) {
-                val dayOneResult = DayOneImporter.importZip(context, uri, diaryRepository, onProgress)
-                ImportOutcome.DayOneSuccess(
-                    entryCount = dayOneResult.entryCount,
-                    notebookName = dayOneResult.notebookName,
-                    photoCount = dayOneResult.photoCount
-                )
+                val isFb = isFacebookZipArchive(context, uri)
+                if (isFb) {
+                    val fbResult = FacebookImporter.importZip(context, uri, diaryRepository, onProgress)
+                    ImportOutcome.FacebookSuccess(
+                        entryCount = fbResult.entryCount,
+                        notebookName = fbResult.notebookName,
+                        photoCount = fbResult.photoCount
+                    )
+                } else {
+                    val dayOneResult = DayOneImporter.importZip(context, uri, diaryRepository, onProgress)
+                    ImportOutcome.DayOneSuccess(
+                        entryCount = dayOneResult.entryCount,
+                        notebookName = dayOneResult.notebookName,
+                        photoCount = dayOneResult.photoCount
+                    )
+                }
             } else {
                 onProgress?.invoke("Reading File", "Loading backup contents...", null)
                 // Read text content
@@ -81,6 +92,19 @@ object JsonExporter {
                         notebookName = dayOneResult.notebookName,
                         photoCount = dayOneResult.photoCount
                     )
+                } else if (FacebookImporter.isFacebookJson(content)) {
+                    val fbResult = FacebookImporter.importJsonContent(
+                        jsonContent = content,
+                        notebookName = "Facebook",
+                        photoPathMap = emptyMap(),
+                        diaryRepository = diaryRepository,
+                        onProgress = onProgress
+                    )
+                    ImportOutcome.FacebookSuccess(
+                        entryCount = fbResult.entryCount,
+                        notebookName = fbResult.notebookName,
+                        photoCount = fbResult.photoCount
+                    )
                 } else {
                     val nativeData = parseFromJsonString(content)
                     diaryRepository.importData(nativeData, overwriteExisting = false, onProgress = onProgress)
@@ -89,6 +113,26 @@ object JsonExporter {
             }
         } catch (e: Exception) {
             ImportOutcome.Error("Import failed: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    private fun isFacebookZipArchive(context: Context, uri: Uri): Boolean {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                java.util.zip.ZipInputStream(stream).use { zipStream ->
+                    var entry = zipStream.nextEntry
+                    while (entry != null) {
+                        val name = entry.name.lowercase()
+                        if (name.contains("your_posts") || name.contains("your_facebook_activity") || name.contains("facebook")) {
+                            return true
+                        }
+                        entry = zipStream.nextEntry
+                    }
+                    false
+                }
+            } ?: false
+        } catch (_: Exception) {
+            false
         }
     }
 

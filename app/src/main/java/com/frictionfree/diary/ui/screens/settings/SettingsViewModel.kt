@@ -172,6 +172,20 @@ class SettingsViewModel(
                     delay(4000)
                     ImportManager.dismiss()
                 }
+                is ImportOutcome.FacebookSuccess -> {
+                    val photoText = if (outcome.photoCount > 0) " and ${outcome.photoCount} photos" else ""
+                    val msg = "Imported ${outcome.entryCount} posts$photoText into '${outcome.notebookName}'"
+                    _statusMessage.value = msg
+                    ImportManager.updateProgress(
+                        isImporting = false,
+                        progress = 1f,
+                        title = "Import Complete",
+                        detail = msg,
+                        isComplete = true
+                    )
+                    delay(4000)
+                    ImportManager.dismiss()
+                }
                 is ImportOutcome.Error -> {
                     _statusMessage.value = outcome.message
                     ImportManager.updateProgress(
