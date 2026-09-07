@@ -64,6 +64,8 @@ Most modern journal apps suffer from bloated friction: login forms, subscription
 ### 💾 Backup & Data Portability
 - 1-tap **Export to JSON**: Lossless backup containing all entries, notebooks, tags, coordinates, and media metadata.
 - 1-tap **Import from JSON**: Easily restore your diary without cloud vendor lock-in.
+- **Day One Migration**: Natively imports Day One export `.zip` archives and `.json` files, preserving photos, tags, timestamps, and GPS coordinates.
+- **AI Agent Import Specification**: See [`AI_JSON_IMPORT_GUIDE.md`](AI_JSON_IMPORT_GUIDE.md) for the exact schema to have AI assistants (ChatGPT, Claude, Gemini, etc.) format journal entries, reading notes, or transcripts for direct import into the app.
 
 ---
 

@@ -179,7 +179,8 @@ class DiaryRepositoryImpl(
             mediaUrisJson = mediaJson,
             isPinned = entry.isPinned,
             isFavorite = entry.isFavorite,
-            moodEmoji = entry.moodEmoji
+            moodEmoji = entry.moodEmoji,
+            isArchived = entry.isArchived
         )
 
         // 2. Insert or update entry
