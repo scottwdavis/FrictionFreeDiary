@@ -110,69 +110,90 @@ object FacebookImporter {
     }
 
     /**
-     * Imports from a Facebook ZIP archive containing your_posts_*.json and media files.
+     * Imports from a single Facebook ZIP archive.
      */
     suspend fun importZip(
         context: Context,
         zipUri: Uri,
         diaryRepository: DiaryRepository,
         onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
-    ): FacebookImportResult = withContext(Dispatchers.IO) {
-        onProgress?.invoke("Importing Facebook Archive", "Reading ZIP archive...", null)
+    ): FacebookImportResult {
+        return importZips(context, listOf(zipUri), diaryRepository, onProgress)
+    }
 
-        val tempZipFile = File(context.cacheDir, "fb_temp_${System.currentTimeMillis()}.zip")
+    /**
+     * Imports from one or multiple Facebook ZIP archives.
+     * When Meta splits large exports into multiple ZIP parts (e.g. JSON in part 1, overflow photos in part 2),
+     * this aggregates media and posts across all archives before inserting into the diary repository.
+     */
+    suspend fun importZips(
+        context: Context,
+        zipUris: List<Uri>,
+        diaryRepository: DiaryRepository,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
+    ): FacebookImportResult = withContext(Dispatchers.IO) {
+        val totalArchives = zipUris.size
         val mediaDir = File(context.filesDir, "media")
         if (!mediaDir.exists()) mediaDir.mkdirs()
 
         val jsonContents = mutableListOf<String>()
         val photoPathMap = mutableMapOf<String, String>() // normalized relative uri / filename -> absolute file path
 
-        try {
-            context.contentResolver.openInputStream(zipUri)?.use { input ->
-                FileOutputStream(tempZipFile).use { output ->
-                    input.copyTo(output)
-                }
-            } ?: throw IllegalArgumentException("Cannot open selected Facebook archive.")
+        zipUris.forEachIndexed { archiveIndex, uri ->
+            val partNum = archiveIndex + 1
+            val prefix = if (totalArchives > 1) "Part $partNum of $totalArchives: " else ""
+            onProgress?.invoke(
+                "Extracting Facebook Archive",
+                "${prefix}Extracting photos & posts...",
+                (archiveIndex.toFloat() / totalArchives.coerceAtLeast(1))
+            )
 
-            onProgress?.invoke("Extracting Archive", "Extracting photos & posts...", null)
+            val tempZipFile = File(context.cacheDir, "fb_temp_${System.currentTimeMillis()}_$archiveIndex.zip")
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tempZipFile).use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: return@forEachIndexed
 
-            java.util.zip.ZipFile(tempZipFile).use { zipFile ->
-                val entries = zipFile.entries()
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    val entryName = entry.name
-                    val fileName = File(entryName).name.lowercase()
+                java.util.zip.ZipFile(tempZipFile).use { zipFile ->
+                    val entries = zipFile.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        val entryName = entry.name
+                        val fileName = File(entryName).name.lowercase()
 
-                    if (!entry.isDirectory) {
-                        if (fileName.endsWith(".json") && (fileName.contains("post") || entryName.contains("posts"))) {
-                            zipFile.getInputStream(entry).use { inStream ->
-                                val buffer = ByteArrayOutputStream()
-                                inStream.copyTo(buffer)
-                                jsonContents.add(buffer.toString("UTF-8"))
-                            }
-                        } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") ||
-                            fileName.endsWith(".png") || fileName.endsWith(".webp")
-                        ) {
-                            val destFile = File(mediaDir, "fb_${UUID.randomUUID().toString().take(8)}_$fileName")
-                            zipFile.getInputStream(entry).use { inStream ->
-                                FileOutputStream(destFile).use { outStream ->
-                                    inStream.copyTo(outStream)
+                        if (!entry.isDirectory) {
+                            if (fileName.endsWith(".json") && (fileName.contains("post") || entryName.contains("posts"))) {
+                                zipFile.getInputStream(entry).use { inStream ->
+                                    val buffer = ByteArrayOutputStream()
+                                    inStream.copyTo(buffer)
+                                    jsonContents.add(buffer.toString("UTF-8"))
                                 }
+                            } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") ||
+                                fileName.endsWith(".png") || fileName.endsWith(".webp")
+                            ) {
+                                val destFile = File(mediaDir, "fb_${UUID.randomUUID().toString().take(8)}_$fileName")
+                                zipFile.getInputStream(entry).use { inStream ->
+                                    FileOutputStream(destFile).use { outStream ->
+                                        inStream.copyTo(outStream)
+                                    }
+                                }
+                                // Map by full path and by basename
+                                val normPath = entryName.replace('\\', '/').trimStart('/')
+                                photoPathMap[normPath] = destFile.absolutePath
+                                photoPathMap[fileName] = destFile.absolutePath
                             }
-                            // Map by full path and by basename
-                            val normPath = entryName.replace('\\', '/').trimStart('/')
-                            photoPathMap[normPath] = destFile.absolutePath
-                            photoPathMap[fileName] = destFile.absolutePath
                         }
                     }
                 }
+            } finally {
+                if (tempZipFile.exists()) tempZipFile.delete()
             }
-        } finally {
-            if (tempZipFile.exists()) tempZipFile.delete()
         }
 
         if (jsonContents.isEmpty()) {
-            throw IllegalArgumentException("No valid Facebook post JSON files found in archive.")
+            throw IllegalArgumentException("No valid Facebook post JSON files found across the selected archive(s).")
         }
 
         val allPosts = mutableListOf<FacebookPost>()
@@ -257,12 +278,13 @@ object FacebookImporter {
         // 2. Map and save entries
         posts.forEachIndexed { index, post ->
             val rawPostText = post.data.mapNotNull { it.post }.firstOrNull() ?: ""
-            val cleanPostText = repairFacebookEncoding(rawPostText).trim()
+            var cleanPostText = repairFacebookEncoding(rawPostText).trim()
             val rawTitle = repairFacebookEncoding(post.title).trim()
 
             // Resolve photos from attachments
             val mediaUris = mutableListOf<String>()
             val externalLinks = mutableListOf<String>()
+            val attachmentCaptions = mutableListOf<String>()
 
             post.attachments.forEach { attachment ->
                 attachment.data.forEach { item ->
@@ -275,10 +297,32 @@ object FacebookImporter {
                             photoCount++
                         }
                     }
+                    item.media?.description?.let { desc ->
+                        val cleanDesc = repairFacebookEncoding(desc).trim()
+                        if (cleanDesc.isNotBlank() && !attachmentCaptions.contains(cleanDesc)) {
+                            attachmentCaptions.add(cleanDesc)
+                        }
+                    }
+                    item.text?.let { txt ->
+                        val cleanTxt = repairFacebookEncoding(txt).trim()
+                        if (isValuableCaption(cleanTxt) && !attachmentCaptions.contains(cleanTxt)) {
+                            attachmentCaptions.add(cleanTxt)
+                        }
+                    }
                     item.external_context?.url?.let { linkUrl ->
                         val linkName = repairFacebookEncoding(item.external_context.name).ifBlank { linkUrl }
                         externalLinks.add("[$linkName]($linkUrl)")
                     }
+                }
+            }
+
+            // If root post body was blank, use captions discovered in attachments/media
+            if (cleanPostText.isBlank() && attachmentCaptions.isNotEmpty()) {
+                cleanPostText = attachmentCaptions.joinToString("\n\n")
+            } else if (cleanPostText.isNotBlank() && attachmentCaptions.isNotEmpty()) {
+                val extraCaptions = attachmentCaptions.filter { !cleanPostText.contains(it) }
+                if (extraCaptions.isNotEmpty()) {
+                    cleanPostText += "\n\n" + extraCaptions.joinToString("\n\n")
                 }
             }
 
@@ -336,6 +380,31 @@ object FacebookImporter {
         )
     }
 
+    private val boilerplateRegex = Regex("""(?i)^\d+\s+years?\s+ago.*$""")
+    private val dateRegex = Regex("""(?i)^[a-z]{3}\s+\d{1,2},\s+\d{4}.*$""")
+
+    /**
+     * Filters out Facebook system strings (like "8 Years Ago", dates, and sharing headers)
+     * from attachment caption text so real user reflections are captured.
+     */
+    private fun isValuableCaption(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.length < 3) return false
+        if (trimmed.matches(boilerplateRegex)) return false
+        if (trimmed.matches(dateRegex)) return false
+        val lower = trimmed.lowercase()
+        if (lower.endsWith("added a new photo.") ||
+            lower.endsWith("added a photo.") ||
+            lower.contains("added new photos") ||
+            lower.contains("shared a memory") ||
+            lower.contains("shared from instagram") ||
+            lower.contains("updated his status") ||
+            lower.contains("updated her status") ||
+            lower.contains("updated their status")
+        ) return false
+        return true
+    }
+
     /**
      * Determines a clean title for the Facebook entry.
      */
@@ -343,8 +412,9 @@ object FacebookImporter {
         // If postText has a natural first line, use that
         if (postText.isNotBlank()) {
             val firstLine = postText.lines().firstOrNull()?.trim() ?: ""
-            if (firstLine.length in 1..60) {
-                return firstLine.removePrefix("#").trim()
+            if (firstLine.isNotBlank()) {
+                val clean = firstLine.removePrefix("#").trim()
+                return if (clean.length <= 60) clean else clean.take(57).trimEnd() + "..."
             }
         }
 
@@ -354,7 +424,8 @@ object FacebookImporter {
             lower.contains("updated his status") ||
             lower.contains("updated her status") ||
             lower.contains("added a new photo") ||
-            lower.contains("added a photo")
+            lower.contains("added a photo") ||
+            lower.contains("shared a memory")
         ) {
             return ""
         }

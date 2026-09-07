@@ -44,6 +44,51 @@ object JsonExporter {
     }
 
     /**
+     * Unified multi-file importer supporting multi-part archives (e.g. split Facebook exports),
+     * single archives, and batch file imports.
+     */
+    suspend fun importMultipleBackupsOrArchives(
+        context: Context,
+        uris: List<Uri>,
+        diaryRepository: DiaryRepository,
+        targetType: String? = null,
+        onProgress: ((title: String, detail: String, progress: Float?) -> Unit)? = null
+    ): ImportOutcome {
+        if (uris.isEmpty()) return ImportOutcome.Error("No files selected.")
+        if (uris.size == 1) {
+            return importBackupOrArchive(context, uris[0], diaryRepository, targetType, onProgress)
+        }
+
+        return try {
+            val allZips = uris.all { isZipFile(context, it) }
+            val isFb = targetType == "Facebook" || (allZips && uris.any { isFacebookZipArchive(context, it) })
+
+            if (isFb) {
+                val fbResult = FacebookImporter.importZips(context, uris, diaryRepository, onProgress)
+                ImportOutcome.FacebookSuccess(
+                    entryCount = fbResult.entryCount,
+                    notebookName = fbResult.notebookName,
+                    photoCount = fbResult.photoCount
+                )
+            } else {
+                var totalEntries = 0
+                for (uri in uris) {
+                    val outcome = importBackupOrArchive(context, uri, diaryRepository, targetType, onProgress)
+                    when (outcome) {
+                        is ImportOutcome.NativeSuccess -> totalEntries += outcome.entryCount
+                        is ImportOutcome.DayOneSuccess -> totalEntries += outcome.entryCount
+                        is ImportOutcome.FacebookSuccess -> totalEntries += outcome.entryCount
+                        is ImportOutcome.Error -> return outcome
+                    }
+                }
+                ImportOutcome.NativeSuccess(entryCount = totalEntries)
+            }
+        } catch (e: Exception) {
+            ImportOutcome.Error("Import failed: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    /**
      * Unified importer supporting native FrictionFree Diary JSON backups,
      * Day One journal archives (.zip and .json), and Facebook data archives (.zip and .json).
      */

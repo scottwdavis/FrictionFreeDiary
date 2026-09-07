@@ -97,12 +97,12 @@ fun SettingsScreen(
     var showPinSetupDialog by remember { mutableStateOf(false) }
     var pendingImportType by remember { mutableStateOf<String?>(null) }
 
-    // File picker launcher for Import (supports native JSON, Day One .zip / .json, and Facebook .zip / .json)
+    // File picker launcher for Import (supports native JSON, Day One .zip / .json, and Facebook multi-part .zip / .json)
     val importPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.importBackupOrArchive(uri, pendingImportType)
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importBackupOrArchives(uris, pendingImportType)
         }
     }
 
@@ -470,7 +470,7 @@ fun SettingsScreen(
                             icon = Icons.Default.Public,
                             iconTint = Color(0xFF1877F2),
                             title = "Facebook Archive",
-                            subtitle = "ZIP archive or your_posts_1.json (posts & photos)",
+                            subtitle = "ZIP archive(s) or your_posts_1.json (select multiple ZIPs if split)",
                             onClick = {
                                 pendingImportType = "Facebook"
                                 importPickerLauncher.launch(

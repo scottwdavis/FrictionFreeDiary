@@ -119,13 +119,19 @@ class SettingsViewModel(
     }
 
     fun importBackupOrArchive(uri: Uri, targetType: String? = null) {
+        importBackupOrArchives(listOf(uri), targetType)
+    }
+
+    fun importBackupOrArchives(uris: List<Uri>, targetType: String? = null) {
+        if (uris.isEmpty()) return
         val app = getApplication<Application>() as? DiaryApplication
         val scope = app?.applicationScope ?: viewModelScope
 
-        val initialTitle = when (targetType) {
-            "Facebook" -> "Importing Facebook..."
-            "DayOne" -> "Importing Day One..."
-            "Native" -> "Restoring Backup..."
+        val initialTitle = when {
+            targetType == "Facebook" && uris.size > 1 -> "Importing Facebook (${uris.size} archives)..."
+            targetType == "Facebook" -> "Importing Facebook..."
+            targetType == "DayOne" -> "Importing Day One..."
+            targetType == "Native" -> "Restoring Backup..."
             else -> "Starting Import..."
         }
 
@@ -134,12 +140,12 @@ class SettingsViewModel(
                 isImporting = true,
                 progress = null,
                 title = initialTitle,
-                detail = "Opening file..."
+                detail = if (uris.size > 1) "Reading ${uris.size} archives..." else "Opening file..."
             )
 
-            val outcome = JsonExporter.importBackupOrArchive(
+            val outcome = JsonExporter.importMultipleBackupsOrArchives(
                 context = getApplication(),
-                uri = uri,
+                uris = uris,
                 diaryRepository = diaryRepository,
                 targetType = targetType,
                 onProgress = { title, detail, progress ->
