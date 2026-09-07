@@ -21,9 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Book
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import com.frictionfree.diary.ui.components.NotebookIcons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -220,8 +222,8 @@ fun NotebooksScreen(
             title = "New Notebook",
             confirmLabel = "Create",
             onDismiss = { showCreateDialog = false },
-            onConfirm = { name, desc, color ->
-                viewModel.createNotebook(name, desc, color)
+            onConfirm = { name, desc, color, icon ->
+                viewModel.createNotebook(name, desc, color, icon)
                 showCreateDialog = false
             }
         )
@@ -234,9 +236,10 @@ fun NotebooksScreen(
             initialName = notebook.name,
             initialDescription = notebook.description,
             initialColor = notebook.colorHex,
+            initialIcon = notebook.icon,
             onDismiss = { notebookToEdit = null },
-            onConfirm = { name, desc, color ->
-                viewModel.updateNotebook(notebook, name, desc, color)
+            onConfirm = { name, desc, color, icon ->
+                viewModel.updateNotebook(notebook, name, desc, color, icon)
                 notebookToEdit = null
             }
         )
@@ -329,7 +332,7 @@ private fun NotebookItemCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.Book,
+                        NotebookIcons.getIcon(notebook.icon),
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(24.dp)
@@ -557,12 +560,14 @@ private fun NotebookDialog(
     initialName: String = "",
     initialDescription: String = "",
     initialColor: String = "#2E7D32",
+    initialIcon: String = "book",
     onDismiss: () -> Unit,
-    onConfirm: (name: String, description: String, color: String) -> Unit
+    onConfirm: (name: String, description: String, color: String, icon: String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var description by remember { mutableStateOf(initialDescription) }
     var selectedColor by remember { mutableStateOf(initialColor) }
+    var selectedIcon by remember { mutableStateOf(initialIcon) }
 
     val colors = listOf(
         "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#C2185B",
@@ -573,7 +578,39 @@ private fun NotebookDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Live preview
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(
+                                try {
+                                    Color(android.graphics.Color.parseColor(selectedColor))
+                                } catch (_: Exception) {
+                                    MaterialTheme.colorScheme.primary
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = NotebookIcons.getIcon(selectedIcon),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -591,13 +628,58 @@ private fun NotebookDialog(
                 )
 
                 Text(
+                    text = "Select Icon",
+                    style = MaterialTheme.typography.labelMedium
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NotebookIcons.items.chunked(5).forEach { rowIcons ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            rowIcons.forEach { item ->
+                                val isSelected = item.key.equals(selectedIcon, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                        .border(
+                                            width = if (isSelected) 2.dp else 1.dp,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedIcon = item.key },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = item.icon,
+                                        contentDescription = item.label,
+                                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
                     text = "Select Color",
                     style = MaterialTheme.typography.labelMedium
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     colors.chunked(5).forEach { rowColors ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             rowColors.forEach { hex ->
                                 val isSelected = hex.equals(selectedColor, ignoreCase = true)
                                 Box(
@@ -630,7 +712,7 @@ private fun NotebookDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(name, description, selectedColor) },
+                onClick = { onConfirm(name, description, selectedColor, selectedIcon) },
                 enabled = name.isNotBlank()
             ) {
                 Text(confirmLabel)

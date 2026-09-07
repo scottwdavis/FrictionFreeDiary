@@ -53,6 +53,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import com.frictionfree.diary.ui.components.NotebookIcons
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -257,6 +258,13 @@ fun TimelineScreen(
                     selected = uiState.selectedNotebookId == null,
                     onClick = { viewModel.selectNotebook(null) },
                     label = { Text("All Notes") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.ViewList,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
                     modifier = Modifier.padding(end = 6.dp)
                 )
 
@@ -272,6 +280,13 @@ fun TimelineScreen(
                             }
                         },
                         label = { Text(notebook.name) },
+                        leadingIcon = {
+                            Icon(
+                                NotebookIcons.getIcon(notebook.icon),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
                         modifier = Modifier.padding(end = 6.dp)
                     )
                 }

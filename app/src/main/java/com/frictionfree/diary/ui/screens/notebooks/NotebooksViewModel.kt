@@ -58,7 +58,7 @@ class NotebooksViewModel(
         _selectedNotebook.value = notebook
     }
 
-    fun createNotebook(name: String, description: String, colorHex: String) {
+    fun createNotebook(name: String, description: String, colorHex: String, icon: String = "book") {
         if (name.isBlank()) return
         viewModelScope.launch {
             _isProcessing.value = true
@@ -68,6 +68,7 @@ class NotebooksViewModel(
                     name = name.trim(),
                     description = description.trim(),
                     colorHex = colorHex,
+                    icon = icon,
                     isDefault = false
                 )
                 diaryRepository.saveNotebook(notebook)
@@ -77,7 +78,7 @@ class NotebooksViewModel(
         }
     }
 
-    fun updateNotebook(notebook: Notebook, name: String, description: String, colorHex: String) {
+    fun updateNotebook(notebook: Notebook, name: String, description: String, colorHex: String, icon: String) {
         if (name.isBlank()) return
         viewModelScope.launch {
             _isProcessing.value = true
@@ -85,7 +86,8 @@ class NotebooksViewModel(
                 val updated = notebook.copy(
                     name = name.trim(),
                     description = description.trim(),
-                    colorHex = colorHex
+                    colorHex = colorHex,
+                    icon = icon
                 )
                 diaryRepository.saveNotebook(updated)
                 if (_selectedNotebook.value?.id == notebook.id) {
