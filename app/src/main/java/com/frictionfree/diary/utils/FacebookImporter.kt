@@ -7,6 +7,7 @@ import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.repository.DiaryRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -16,12 +17,17 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 @Serializable
+data class FacebookTag(
+    val name: String? = null
+)
+
+@Serializable
 data class FacebookPost(
     val timestamp: Long? = null,
     val title: String? = null,
     val data: List<FacebookPostData> = emptyList(),
     val attachments: List<FacebookAttachment> = emptyList(),
-    val tags: List<String> = emptyList()
+    val tags: List<FacebookTag> = emptyList()
 )
 
 @Serializable
@@ -110,6 +116,33 @@ object FacebookImporter {
     }
 
     /**
+     * Identifies legitimate Facebook user post export files while filtering out
+     * auxiliary metadata (albums, revision edits, tag lists, sales, administrative files).
+     */
+    fun isPostJsonFile(fileName: String, entryName: String): Boolean {
+        val lowerFile = fileName.lowercase()
+        val lowerEntry = entryName.replace('\\', '/').lowercase()
+        if (!lowerFile.endsWith(".json")) return false
+
+        // Exclude non-post auxiliary files, albums, edit histories, tag metadata, sales, and administrative files
+        if (lowerEntry.contains("/album/") || lowerFile.startsWith("album")) return false
+        if (lowerFile.contains("edits_you_made")) return false
+        if (lowerFile.contains("places_you_have_been_tagged")) return false
+        if (lowerFile.contains("media_used_for_memories")) return false
+        if (lowerFile.contains("content_sharing_links")) return false
+        if (lowerFile.contains("items_sold")) return false
+        if (lowerFile.contains("uncategorized_photos")) return false
+        if (lowerFile.contains("your_videos")) return false
+        if (lowerFile.contains("check-ins")) return false
+
+        // Primary post archives: your_posts_*.json, your_posts__*.json, posts.json, status_updates.json
+        return lowerFile.startsWith("your_posts") ||
+                lowerFile == "posts.json" ||
+                lowerFile.startsWith("posts_") ||
+                lowerFile == "status_updates.json"
+    }
+
+    /**
      * Imports from a single Facebook ZIP archive.
      */
     suspend fun importZip(
@@ -164,7 +197,7 @@ object FacebookImporter {
                         val fileName = File(entryName).name.lowercase()
 
                         if (!entry.isDirectory) {
-                            if (fileName.endsWith(".json") && (fileName.contains("post") || entryName.contains("posts"))) {
+                            if (isPostJsonFile(fileName, entryName)) {
                                 zipFile.getInputStream(entry).use { inStream ->
                                     val buffer = ByteArrayOutputStream()
                                     inStream.copyTo(buffer)
@@ -272,7 +305,19 @@ object FacebookImporter {
             diaryRepository.saveNotebook(fbNotebook)
         }
 
+        // Clean up any empty/malformed Facebook posts previously imported from auxiliary metadata
+        try {
+            val existingEntries = diaryRepository.getAllEntries(isArchived = false).firstOrNull() ?: emptyList()
+            val badEntries = existingEntries.filter {
+                it.notebookId == notebookId && (it.content.isBlank() || it.content == "Facebook Post" || (it.title == "Facebook Post" && it.mediaUris.isEmpty()))
+            }
+            if (badEntries.isNotEmpty()) {
+                diaryRepository.deleteEntries(badEntries.map { it.id })
+            }
+        } catch (_: Exception) {}
+
         var photoCount = 0
+        var savedCount = 0
         val total = posts.size
 
         // 2. Map and save entries
@@ -337,18 +382,31 @@ object FacebookImporter {
             }
 
             val finalContent = contentBuilder.toString().ifBlank {
-                if (mediaUris.isNotEmpty()) "Shared photos" else rawTitle.ifBlank { "Facebook Post" }
+                if (mediaUris.isNotEmpty()) "Shared photos" else rawTitle.ifBlank { "" }
             }
 
-            // Title derivation: clean out generic "X updated his status" boilerplate
-            val derivedTitle = deriveTitle(rawTitle, cleanPostText)
+            // Skip post if there's no content and no photos
+            if (finalContent.isBlank() && mediaUris.isEmpty()) {
+                return@forEachIndexed
+            }
 
-            // Timestamps: Facebook exports in Unix epoch seconds
-            val epochSeconds = post.timestamp ?: (System.currentTimeMillis() / 1000L)
+            // Timestamps: Facebook exports in Unix epoch seconds. Skip if absent.
+            val epochSeconds = post.timestamp ?: return@forEachIndexed
             val epochMillis = epochSeconds * 1000L
 
+            // Title derivation: clean out generic "X updated his status" boilerplate
+            val derivedTitle = deriveTitle(rawTitle, cleanPostText).ifBlank {
+                if (cleanPostText.isNotBlank()) cleanPostText.take(40).trim()
+                else if (mediaUris.isNotEmpty()) "Shared Photos"
+                else "Facebook Post"
+            }
+
+            // Deterministic ID based on timestamp and content hash to prevent duplicates upon re-import
+            val contentHash = (finalContent.take(30).hashCode() and 0xffff).toString(16)
+            val entryId = "fb_${epochSeconds}_${contentHash}"
+
             val entry = DiaryEntry(
-                id = "fb_${UUID.randomUUID().toString().take(12)}",
+                id = entryId,
                 title = derivedTitle,
                 content = finalContent,
                 notebookId = notebookId,
@@ -356,12 +414,13 @@ object FacebookImporter {
                 createdAt = epochMillis,
                 updatedAt = epochMillis,
                 mediaUris = mediaUris,
-                tags = post.tags.map { repairFacebookEncoding(it) },
+                tags = post.tags.mapNotNull { it.name }.map { repairFacebookEncoding(it) },
                 isPinned = false,
                 isFavorite = false
             )
 
             diaryRepository.saveEntry(entry)
+            savedCount++
 
             if (index % 5 == 0 || index == total - 1) {
                 val fraction = if (total > 0) (index + 1).toFloat() / total else 1f
@@ -374,7 +433,7 @@ object FacebookImporter {
         }
 
         return FacebookImportResult(
-            entryCount = total,
+            entryCount = savedCount,
             notebookName = notebookName,
             photoCount = photoCount
         )

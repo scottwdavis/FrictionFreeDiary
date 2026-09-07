@@ -277,4 +277,50 @@ class FacebookImporterTest {
         // Photo from map attached
         assertEquals(listOf("/data/media/wedgemount.jpg"), entry.mediaUris)
     }
+
+    @Test
+    fun testIsPostJsonFile() {
+        // True for legitimate post files
+        assertTrue(FacebookImporter.isPostJsonFile("your_posts_1.json", "your_facebook_activity/posts/your_posts_1.json"))
+        assertTrue(FacebookImporter.isPostJsonFile("your_posts__check_ins__photos_and_videos_1.json", "your_facebook_activity/posts/your_posts__check_ins__photos_and_videos_1.json"))
+        assertTrue(FacebookImporter.isPostJsonFile("posts.json", "posts.json"))
+        assertTrue(FacebookImporter.isPostJsonFile("status_updates.json", "posts/status_updates.json"))
+
+        // False for auxiliary metadata files that caused the 820 empty entries bug
+        assertTrue(!FacebookImporter.isPostJsonFile("edits_you_made_to_posts.json", "your_facebook_activity/posts/edits_you_made_to_posts.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("places_you_have_been_tagged_in.json", "your_facebook_activity/posts/places_you_have_been_tagged_in.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("0.json", "your_facebook_activity/posts/album/0.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("36.json", "your_facebook_activity/posts/album/36.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("media_used_for_memories.json", "your_facebook_activity/posts/media_used_for_memories.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("content_sharing_links_you_have_created.json", "your_facebook_activity/posts/content_sharing_links_you_have_created.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("items_sold.json", "your_facebook_activity/posts/items_sold.json"))
+        assertTrue(!FacebookImporter.isPostJsonFile("uncategorized_photos.json", "your_facebook_activity/posts/your_uncategorized_photos.json"))
+    }
+
+    @Test
+    fun testObjectTagsParsing() {
+        val json = """
+            [
+              {
+                "timestamp": 1784953509,
+                "title": "Scott Davis added 5 new photos.",
+                "data": [
+                  {
+                    "post": "Come hang out and talk 3D printing with me."
+                  }
+                ],
+                "tags": [
+                  {
+                    "name": "Samantha Davis"
+                  }
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val posts = FacebookImporter.parsePostsJson(json)
+        assertEquals(1, posts.size)
+        assertEquals(1, posts[0].tags.size)
+        assertEquals("Samantha Davis", posts[0].tags[0].name)
+    }
 }
