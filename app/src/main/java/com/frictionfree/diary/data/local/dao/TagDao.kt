@@ -45,6 +45,12 @@ interface TagDao {
     @Query("DELETE FROM entry_tag_cross_ref WHERE entryId = :entryId")
     suspend fun deleteCrossRefsForEntry(entryId: String)
 
+    @Query("DELETE FROM entry_tag_cross_ref WHERE entryId IN (:entryIds)")
+    suspend fun deleteCrossRefsForEntries(entryIds: List<String>)
+
+    @Query("DELETE FROM entry_tag_cross_ref WHERE entryId IN (SELECT id FROM entries WHERE notebookId = :notebookId)")
+    suspend fun deleteCrossRefsForNotebook(notebookId: String)
+
     @Query("UPDATE tags SET usageCount = (SELECT COUNT(*) FROM entry_tag_cross_ref WHERE tagName = tags.name)")
     suspend fun recalculateTagCounts()
 

@@ -74,6 +74,9 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE id IN (:entryIds)")
     suspend fun deleteEntriesByIds(entryIds: List<String>)
 
+    @Query("DELETE FROM entries WHERE notebookId = :notebookId")
+    suspend fun deleteEntriesByNotebook(notebookId: String)
+
     @Query("UPDATE entries SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id IN (:entryIds)")
     suspend fun updateArchiveStatus(entryIds: List<String>, isArchived: Boolean, updatedAt: Long = System.currentTimeMillis())
 

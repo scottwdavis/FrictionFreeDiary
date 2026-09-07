@@ -1,5 +1,6 @@
 package com.frictionfree.diary.data.repository
 
+import androidx.room.withTransaction
 import com.frictionfree.diary.data.local.DiaryDatabase
 import com.frictionfree.diary.data.local.dao.EntryDao
 import com.frictionfree.diary.data.local.dao.NotebookDao
@@ -206,22 +207,36 @@ class DiaryRepositoryImpl(
     }
 
     override suspend fun deleteEntry(id: String) {
-        entryDao.deleteEntryById(id)
-        tagDao.deleteCrossRefsForEntry(id)
-        tagDao.recalculateTagCounts()
-        tagDao.cleanupUnusedTags()
+        val db = databaseProvider?.invoke()
+        val executeDelete: suspend () -> Unit = {
+            entryDao.deleteEntryById(id)
+            tagDao.deleteCrossRefsForEntry(id)
+            tagDao.recalculateTagCounts()
+            tagDao.cleanupUnusedTags()
+        }
+        if (db != null) {
+            db.withTransaction { executeDelete() }
+        } else {
+            executeDelete()
+        }
     }
 
     override suspend fun deleteEntries(entryIds: List<String>) {
         if (entryIds.isEmpty()) return
-        entryIds.chunked(500).forEach { chunk ->
-            for (id in chunk) {
-                tagDao.deleteCrossRefsForEntry(id)
+        val db = databaseProvider?.invoke()
+        val executeDelete: suspend () -> Unit = {
+            entryIds.chunked(500).forEach { chunk ->
+                tagDao.deleteCrossRefsForEntries(chunk)
+                entryDao.deleteEntriesByIds(chunk)
             }
-            entryDao.deleteEntriesByIds(chunk)
+            tagDao.recalculateTagCounts()
+            tagDao.cleanupUnusedTags()
         }
-        tagDao.recalculateTagCounts()
-        tagDao.cleanupUnusedTags()
+        if (db != null) {
+            db.withTransaction { executeDelete() }
+        } else {
+            executeDelete()
+        }
     }
 
     override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {
@@ -257,19 +272,29 @@ class DiaryRepositoryImpl(
         val notebook = notebookDao.getNotebookById(id) ?: return
         if (notebook.isDefault) return
 
-        if (deleteEntries) {
-            val entryIds = entryDao.getEntryIdsByNotebook(id)
-            deleteEntries(entryIds)
-        } else {
-            val targetId = if (!targetNotebookId.isNullOrBlank() && targetNotebookId != id) {
-                targetNotebookId
+        val db = databaseProvider?.invoke()
+        val executeDeleteNotebook: suspend () -> Unit = {
+            if (deleteEntries) {
+                tagDao.deleteCrossRefsForNotebook(id)
+                entryDao.deleteEntriesByNotebook(id)
+                tagDao.recalculateTagCounts()
+                tagDao.cleanupUnusedTags()
             } else {
-                notebookDao.getAllNotebooks().firstOrNull { it.isDefault && it.id != id }?.id ?: "default_personal"
+                val targetId = if (!targetNotebookId.isNullOrBlank() && targetNotebookId != id) {
+                    targetNotebookId
+                } else {
+                    notebookDao.getAllNotebooks().firstOrNull { it.isDefault && it.id != id }?.id ?: "default_personal"
+                }
+                entryDao.reassignNotebookForEntries(oldNotebookId = id, newNotebookId = targetId)
             }
-            entryDao.reassignNotebookForEntries(oldNotebookId = id, newNotebookId = targetId)
+            notebookDao.deleteNotebook(notebook)
         }
 
-        notebookDao.deleteNotebook(notebook)
+        if (db != null) {
+            db.withTransaction { executeDeleteNotebook() }
+        } else {
+            executeDeleteNotebook()
+        }
     }
 
     override suspend fun getNotebookById(id: String): Notebook? {
