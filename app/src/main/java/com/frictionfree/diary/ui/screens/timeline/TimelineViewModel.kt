@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.frictionfree.diary.data.model.DiaryEntry
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.repository.DiaryRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -47,52 +49,83 @@ class TimelineViewModel(
     val notebooks: StateFlow<List<Notebook>> = diaryRepository.getAllNotebooks()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val uiState: StateFlow<TimelineUiState> = combine<Any?, Tuple7<String, String?, String?, TimelineViewMode, Int, Boolean, List<Notebook>>>(
+    // Active entries flow for current archive mode.
+    // Maintained in memory so notebook switching, tag filtering, and searches are 100% instant without re-querying disk.
+    private val allEntriesFlow: Flow<List<DiaryEntry>> = _isArchiveMode
+        .flatMapLatest { isArchive -> diaryRepository.getAllEntries(isArchive) }
+        .flowOn(Dispatchers.IO)
+
+    private data class FilterParams(
+        val query: String,
+        val notebookId: String?,
+        val tag: String?,
+        val mode: TimelineViewMode,
+        val weekOffset: Int,
+        val isArchive: Boolean
+    )
+
+    private val filterParams: Flow<FilterParams> = combine(
         _searchQuery,
         _selectedNotebookId,
         _selectedTag,
         _viewMode,
-        _weekOffset,
-        _isArchiveMode,
-        notebooks
-    ) { args ->
-        @Suppress("UNCHECKED_CAST")
-        Tuple7(
-            args[0] as String,
-            args[1] as String?,
-            args[2] as String?,
-            args[3] as TimelineViewMode,
-            args[4] as Int,
-            args[5] as Boolean,
-            args[6] as List<Notebook>
+        _weekOffset
+    ) { query, notebookId, tag, mode, weekOffset ->
+        Tuple5(query, notebookId, tag, mode, weekOffset)
+    }.combine(_isArchiveMode) { t5, isArchive ->
+        FilterParams(
+            query = t5.v1,
+            notebookId = t5.v2,
+            tag = t5.v3,
+            mode = t5.v4,
+            weekOffset = t5.v5,
+            isArchive = isArchive
         )
-    }.flatMapLatest { (query, notebookId, tag, mode, weekOffset, isArchive, nbs) ->
-        val entriesFlow = when {
-            query.isNotBlank() -> diaryRepository.searchEntries(query, isArchive)
-            tag != null -> diaryRepository.getEntriesByTag(tag, isArchive)
-            notebookId != null -> diaryRepository.getEntriesByNotebook(notebookId, isArchive)
-            mode == TimelineViewMode.WEEK -> {
-                val (start, end) = getWeekRange(weekOffset)
-                diaryRepository.getEntriesInRange(start, end, isArchive)
+    }
+
+    val uiState: StateFlow<TimelineUiState> = combine(
+        allEntriesFlow,
+        notebooks,
+        filterParams,
+        _selectedEntryIds
+    ) { allEntries, nbs, params, selectedIds ->
+        val (start, end) = if (params.mode == TimelineViewMode.WEEK) getWeekRange(params.weekOffset) else Pair(0L, 0L)
+        val queryLower = params.query.trim().lowercase()
+        val tagLower = params.tag?.lowercase()
+
+        // Lightning-fast in-memory filtering: 0ms lag when switching notebooks
+        val filtered = allEntries.filter { entry ->
+            // 1. Notebook filter
+            if (params.notebookId != null && entry.notebookId != params.notebookId) return@filter false
+            // 2. Tag filter
+            if (tagLower != null && !entry.tags.any { it.equals(tagLower, ignoreCase = true) }) return@filter false
+            // 3. Week filter
+            if (params.mode == TimelineViewMode.WEEK && (entry.createdAt < start || entry.createdAt > end)) return@filter false
+            // 4. Search query
+            if (queryLower.isNotEmpty()) {
+                val matchTitle = entry.title.lowercase().contains(queryLower)
+                val matchContent = entry.content.lowercase().contains(queryLower)
+                val matchTag = entry.tags.any { it.lowercase().contains(queryLower) }
+                if (!matchTitle && !matchContent && !matchTag) return@filter false
             }
-            else -> diaryRepository.getAllEntries(isArchive)
+            true
         }
 
-        combine(entriesFlow, _selectedEntryIds) { entries, selectedIds ->
-            val validSelected = selectedIds.filter { id -> entries.any { it.id == id } }.toSet()
-            TimelineUiState(
-                entries = entries,
-                notebooks = nbs,
-                selectedNotebookId = notebookId,
-                selectedTag = tag,
-                searchQuery = query,
-                viewMode = mode,
-                selectedWeekOffset = weekOffset,
-                isArchiveMode = isArchive,
-                selectedEntryIds = validSelected
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, TimelineUiState())
+        val validSelected = selectedIds.filter { id -> filtered.any { it.id == id } }.toSet()
+
+        TimelineUiState(
+            entries = filtered,
+            notebooks = nbs,
+            selectedNotebookId = params.notebookId,
+            selectedTag = params.tag,
+            searchQuery = params.query,
+            viewMode = params.mode,
+            selectedWeekOffset = params.weekOffset,
+            isArchiveMode = params.isArchive,
+            selectedEntryIds = validSelected
+        )
+    }.flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.Lazily, TimelineUiState())
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
@@ -100,7 +133,9 @@ class TimelineViewModel(
 
     fun selectNotebook(notebookId: String?) {
         _selectedNotebookId.value = notebookId
-        _selectedTag.value = null
+        if (_selectedTag.value != null) {
+            _selectedTag.value = null
+        }
         clearSelection()
     }
 
@@ -144,35 +179,35 @@ class TimelineViewModel(
     }
 
     fun archiveSelectedEntries() {
-        val ids = _selectedEntryIds.value.toList()
-        if (ids.isEmpty()) return
-        val targetArchive = !_isArchiveMode.value
+        val idsToArchive = _selectedEntryIds.value.toList()
+        if (idsToArchive.isEmpty()) return
+        val targetArchiveState = !uiState.value.isArchiveMode
         viewModelScope.launch {
-            diaryRepository.archiveEntries(ids, targetArchive)
+            diaryRepository.archiveEntries(idsToArchive, targetArchiveState)
             clearSelection()
         }
     }
 
     fun moveSelectedEntriesToNotebook(notebookId: String) {
-        val ids = _selectedEntryIds.value.toList()
-        if (ids.isEmpty()) return
+        val idsToMove = _selectedEntryIds.value.toList()
+        if (idsToMove.isEmpty()) return
         viewModelScope.launch {
-            diaryRepository.moveEntriesToNotebook(ids, notebookId)
+            diaryRepository.moveEntriesToNotebook(idsToMove, notebookId)
             clearSelection()
         }
     }
 
     fun deleteSelectedEntries() {
-        val ids = _selectedEntryIds.value.toList()
-        if (ids.isEmpty()) return
+        val idsToDelete = _selectedEntryIds.value.toList()
+        if (idsToDelete.isEmpty()) return
         viewModelScope.launch {
-            diaryRepository.deleteEntries(ids)
+            diaryRepository.deleteEntries(idsToDelete)
             clearSelection()
         }
     }
 
-    private data class Tuple7<A, B, C, D, E, F, G>(
-        val v1: A, val v2: B, val v3: C, val v4: D, val v5: E, val v6: F, val v7: G
+    private data class Tuple5<A, B, C, D, E>(
+        val v1: A, val v2: B, val v3: C, val v4: D, val v5: E
     )
 
     private fun getWeekRange(offsetWeeks: Int): Pair<Long, Long> {

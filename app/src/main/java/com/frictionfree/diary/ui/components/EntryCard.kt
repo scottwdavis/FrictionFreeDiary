@@ -29,6 +29,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -176,15 +177,19 @@ fun EntryCard(
 
                 // Content snippet
                 if (entry.content.isNotBlank()) {
-                    val cleanSnippet = entry.content
-                        .replace(Regex("""!\[([^\]]*)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)"""), "") // remove images
-                        .replace(Regex("""\[([^\]]+)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)"""), "$1") // replace [label](url) with label
-                        .replace(Regex("""<[^>]+>"""), "") // strip remaining html tags
-                        .replace(Regex("""[#*`_~]"""), "") // strip markdown symbols
-                        .lines()
-                        .map { it.trim() }
-                        .filter { it.isNotBlank() }
-                        .joinToString(" ")
+                    val cleanSnippet = remember(entry.content) {
+                        entry.content
+                            .replace(REGEX_MARKDOWN_IMAGES, "")
+                            .replace(REGEX_MARKDOWN_LINKS, "$1")
+                            .replace(REGEX_HTML_TAGS, "")
+                            .replace(REGEX_MARKDOWN_SYMBOLS, "")
+                            .lines()
+                            .asSequence()
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .take(5)
+                            .joinToString(" ")
+                    }
 
                     Text(
                         text = cleanSnippet,
@@ -266,3 +271,8 @@ fun EntryCard(
         }
     }
 }
+
+private val REGEX_MARKDOWN_IMAGES = Regex("""!\[([^\]]*)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)""")
+private val REGEX_MARKDOWN_LINKS = Regex("""\[([^\]]+)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)""")
+private val REGEX_HTML_TAGS = Regex("""<[^>]+>""")
+private val REGEX_MARKDOWN_SYMBOLS = Regex("""[#*`_~]""")

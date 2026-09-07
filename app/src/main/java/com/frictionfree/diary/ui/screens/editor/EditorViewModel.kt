@@ -13,12 +13,14 @@ import com.frictionfree.diary.data.repository.DiaryRepository
 import com.frictionfree.diary.data.repository.SettingsRepository
 import com.frictionfree.diary.utils.LocationHelper
 import com.frictionfree.diary.utils.ShareIntentHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class EditorUiState(
@@ -197,8 +199,10 @@ class EditorViewModel(
                 isArchived = state.isArchived
             )
             diaryRepository.saveEntry(entry)
-            _uiState.value = _uiState.value.copy(isSaved = true)
-            onComplete?.invoke()
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(isSaved = true)
+                onComplete?.invoke()
+            }
         }
     }
 
@@ -211,7 +215,9 @@ class EditorViewModel(
         val scope = appScope ?: viewModelScope
         scope.launch {
             diaryRepository.deleteEntry(_uiState.value.entryId)
-            onComplete()
+            withContext(Dispatchers.Main) {
+                onComplete()
+            }
         }
     }
 }
