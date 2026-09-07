@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -71,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -356,14 +359,26 @@ fun EditorScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
+                val entryColor = EntryColor.fromHex(uiState.selectedColorHex)
+                val hasColor = entryColor != EntryColor.DEFAULT
+                val accentColor = entryColor.toComposeColor()
+
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     shadowElevation = 3.dp,
                     tonalElevation = 1.dp,
-                    color = MaterialTheme.colorScheme.surface,
+                    color = if (hasColor) {
+                        accentColor.copy(alpha = 0.06f).compositeOver(MaterialTheme.colorScheme.surface)
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
                     border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        width = if (hasColor) 1.5.dp else 1.dp,
+                        color = if (hasColor) {
+                            accentColor.copy(alpha = 0.45f)
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        }
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -378,13 +393,36 @@ fun EditorScreen(
                             }
                         }
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = cardMinHeight)
-                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                            .height(IntrinsicSize.Min)
                     ) {
-                        // Timestamp and geotag indicator
+                        if (hasColor) {
+                            Box(
+                                modifier = Modifier
+                                    .width(8.dp)
+                                    .fillMaxHeight()
+                                    .background(
+                                        accentColor,
+                                        RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp)
+                                    )
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = cardMinHeight)
+                                .padding(
+                                    start = if (hasColor) 14.dp else 18.dp,
+                                    end = 18.dp,
+                                    top = 16.dp,
+                                    bottom = 16.dp
+                                )
+                        ) {
+                            // Timestamp and geotag indicator
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -583,5 +621,6 @@ fun EditorScreen(
             }
         }
     }
+}
 }
 }

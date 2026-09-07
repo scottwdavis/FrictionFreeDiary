@@ -7,8 +7,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +61,7 @@ fun EntryCard(
 ) {
     val entryColor = EntryColor.fromHex(entry.colorHex)
     val hasColor = entryColor != EntryColor.DEFAULT
+    val accentColor = entryColor.toComposeColor()
 
     Card(
         modifier = modifier
@@ -70,39 +74,55 @@ fun EntryCard(
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else if (hasColor) {
+                accentColor.copy(alpha = 0.08f).compositeOver(MaterialTheme.colorScheme.surface)
             } else {
                 MaterialTheme.colorScheme.surface
             }
         ),
-        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp)
+        border = if (isSelected) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else if (hasColor) {
+            BorderStroke(1.dp, accentColor.copy(alpha = 0.45f))
+        } else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.5.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Prominent full-height left accent spine
+            if (hasColor) {
+                Box(
+                    modifier = Modifier
+                        .width(8.dp)
+                        .fillMaxHeight()
+                        .background(
+                            accentColor,
+                            RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
+                        )
+                )
+            }
+
             if (isInSelectionMode) {
                 Checkbox(
                     checked = isSelected,
                     onCheckedChange = { onClick() },
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-            // Left color accent bar
-            if (hasColor) {
-                Box(
-                    modifier = Modifier
-                        .width(6.dp)
-                        .height(120.dp)
-                        .background(entryColor.toComposeColor())
+                    modifier = Modifier.padding(start = if (hasColor) 8.dp else 12.dp)
                 )
             }
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp)
+                    .weight(1f)
+                    .padding(
+                        start = if (hasColor && !isInSelectionMode) 12.dp else 14.dp,
+                        end = 14.dp,
+                        top = 14.dp,
+                        bottom = 14.dp
+                    )
             ) {
                 // Top row: Date/time, notebook name, pinned icon, archive icon
                 Row(
