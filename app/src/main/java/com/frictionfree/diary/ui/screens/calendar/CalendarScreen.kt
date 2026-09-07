@@ -1,7 +1,5 @@
 package com.frictionfree.diary.ui.screens.calendar
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -17,7 +15,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,8 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -52,26 +47,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,8 +78,8 @@ import kotlinx.coroutines.launch
 import java.text.DateFormatSymbols
 import java.util.Calendar
 
-private const val BASE_YEAR = 1970
-private const val TOTAL_MONTHS_COUNT = 2400 // 1970 to 2170
+private const val START_YEAR = 1970
+private const val TOTAL_MONTHS = 1200 // 1970 to 2070 (100 years)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,39 +92,38 @@ fun CalendarScreen(
 
     var showPinpointDialog by remember { mutableStateOf(false) }
 
-    // Calculate initial page index for HorizontalPager
-    val initialPage = remember {
-        val nowCal = Calendar.getInstance()
-        val y = nowCal.get(Calendar.YEAR)
-        val m = nowCal.get(Calendar.MONTH)
-        (y - BASE_YEAR) * 12 + m
+    // Initial scroll position calculated for current month
+    val currentMonthIndex = remember {
+        val now = Calendar.getInstance()
+        val y = now.get(Calendar.YEAR)
+        val m = now.get(Calendar.MONTH)
+        ((y - START_YEAR) * 12 + m).coerceIn(0, TOTAL_MONTHS - 1)
     }
 
-    val pagerState = rememberPagerState(
-        initialPage = initialPage,
-        pageCount = { TOTAL_MONTHS_COUNT }
-    )
-
-    // Sync pager position with ViewModel when user swipes
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { page ->
-            val pageYear = BASE_YEAR + page / 12
-            val pageMonth = page % 12
-            if (pageYear != uiState.currentYear || pageMonth != uiState.currentMonth) {
-                viewModel.setMonth(pageYear, pageMonth)
-            }
-        }
-    }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = currentMonthIndex)
 
     val monthNames = remember { DateFormatSymbols().months }
-    val currentMonthName = monthNames[uiState.currentMonth]
+
+    // Dynamically derive the currently visible month & year as the user scrolls vertically
+    val visibleMonthIndex by remember {
+        derivedStateOf { listState.firstVisibleItemIndex }
+    }
+    val currentHeaderYear = remember(visibleMonthIndex) {
+        START_YEAR + visibleMonthIndex / 12
+    }
+    val currentHeaderMonth = remember(visibleMonthIndex) {
+        visibleMonthIndex % 12
+    }
+    val currentHeaderMonthName = remember(currentHeaderMonth) {
+        monthNames[currentHeaderMonth]
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     if (uiState.viewMode == CalendarViewMode.MONTH) {
-                        // Tappable header with dropdown arrow to pinpoint any month/year
+                        // Tappable header with dropdown arrow to pinpoint any month & year
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -139,7 +132,7 @@ fun CalendarScreen(
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "$currentMonthName ${uiState.currentYear}",
+                                text = "$currentHeaderMonthName $currentHeaderYear",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
@@ -152,19 +145,17 @@ fun CalendarScreen(
                         }
                     } else {
                         // Week View Header
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Week View",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(
+                            text = "Week View",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
                 navigationIcon = {
                     if (uiState.viewMode == CalendarViewMode.WEEK) {
                         IconButton(onClick = { viewModel.setViewMode(CalendarViewMode.MONTH) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Return to Month View")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Return to Months")
                         }
                     }
                 },
@@ -173,14 +164,9 @@ fun CalendarScreen(
                         // Jump to today button
                         IconButton(
                             onClick = {
-                                val now = Calendar.getInstance()
-                                val nowYear = now.get(Calendar.YEAR)
-                                val nowMonth = now.get(Calendar.MONTH)
-                                val targetPage = (nowYear - BASE_YEAR) * 12 + nowMonth
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(targetPage)
+                                    listState.animateScrollToItem(currentMonthIndex)
                                 }
-                                viewModel.selectDate(now.timeInMillis, switchToWeek = false)
                             }
                         ) {
                             Icon(Icons.Default.Today, contentDescription = "Jump to Today")
@@ -214,27 +200,26 @@ fun CalendarScreen(
         ) {
             when (uiState.viewMode) {
                 CalendarViewMode.MONTH -> {
-                    // Full-screen horizontal paging between months
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize()
-                    ) { page ->
-                        val pageYear = BASE_YEAR + page / 12
-                        val pageMonth = page % 12
+                    // Continuous vertical scrolling of months: multiple months visible on screen!
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        items(TOTAL_MONTHS, key = { it }) { index ->
+                            val monthYear = START_YEAR + index / 12
+                            val monthIdx = index % 12
 
-                        FullScreenMonthCalendar(
-                            year = pageYear,
-                            month = pageMonth,
-                            selectedDateMillis = uiState.selectedDateMillis,
-                            entriesInMonth = if (pageYear == uiState.currentYear && pageMonth == uiState.currentMonth) {
-                                uiState.entriesInMonth
-                            } else {
-                                emptyList()
-                            },
-                            onDayClicked = { dayMillis ->
-                                viewModel.selectDate(dayMillis, switchToWeek = true)
-                            }
-                        )
+                            MonthSectionItem(
+                                year = monthYear,
+                                month = monthIdx,
+                                monthName = monthNames[monthIdx],
+                                entryDayCounts = uiState.entryDayCounts,
+                                onDayClicked = { dayMillis ->
+                                    viewModel.selectDate(dayMillis, switchToWeek = true)
+                                }
+                            )
+                        }
                     }
                 }
                 CalendarViewMode.WEEK -> {
@@ -254,14 +239,14 @@ fun CalendarScreen(
             // Month & Year Pinpoint Dialog
             if (showPinpointDialog) {
                 MonthYearPinpointDialog(
-                    initialYear = uiState.currentYear,
-                    initialMonth = uiState.currentMonth,
+                    initialYear = currentHeaderYear,
+                    initialMonth = currentHeaderMonth,
                     onDismiss = { showPinpointDialog = false },
                     onConfirm = { selectedYear, selectedMonth ->
                         showPinpointDialog = false
-                        val targetPage = (selectedYear - BASE_YEAR) * 12 + selectedMonth
+                        val targetIndex = ((selectedYear - START_YEAR) * 12 + selectedMonth).coerceIn(0, TOTAL_MONTHS - 1)
                         coroutineScope.launch {
-                            pagerState.scrollToPage(targetPage)
+                            listState.animateScrollToItem(targetIndex)
                         }
                         viewModel.setMonth(selectedYear, selectedMonth)
                     }
@@ -272,14 +257,15 @@ fun CalendarScreen(
 }
 
 /**
- * Full-screen month view with day headers and flexible row heights.
+ * A compact, proportional month section within the vertical feed.
+ * Allows seeing more than one month on the screen at the same time.
  */
 @Composable
-private fun FullScreenMonthCalendar(
+private fun MonthSectionItem(
     year: Int,
     month: Int,
-    selectedDateMillis: Long,
-    entriesInMonth: List<DiaryEntry>,
+    monthName: String,
+    entryDayCounts: Map<String, Int>,
     onDayClicked: (Long) -> Unit
 ) {
     val cal = Calendar.getInstance().apply {
@@ -297,30 +283,27 @@ private fun FullScreenMonthCalendar(
     val isCurrentCalendarMonth = todayCal.get(Calendar.YEAR) == year && todayCal.get(Calendar.MONTH) == month
     val todayDay = todayCal.get(Calendar.DAY_OF_MONTH)
 
-    // Pre-calculate entry counts per day for fast lookup
-    val entryDayCounts = remember(entriesInMonth) {
-        val map = mutableMapOf<Int, Int>()
-        entriesInMonth.forEach { entry ->
-            val eCal = Calendar.getInstance().apply { timeInMillis = entry.createdAt }
-            if (eCal.get(Calendar.YEAR) == year && eCal.get(Calendar.MONTH) == month) {
-                val d = eCal.get(Calendar.DAY_OF_MONTH)
-                map[d] = (map[d] ?: 0) + 1
-            }
-        }
-        map
-    }
+    val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        // Days of week header (Mon - Sun)
-        val daysOfWeek = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        // Month Title Header
+        Text(
+            text = "$monthName $year",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 6.dp, bottom = 8.dp)
+        )
+
+        // Days of week row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
             daysOfWeek.forEach { day ->
@@ -328,19 +311,18 @@ private fun FullScreenMonthCalendar(
                     text = day,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Full-screen week rows
+        // Compact, proportional month rows
         for (week in 0 until totalWeeks) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
                 for (dayCol in 0..6) {
@@ -349,7 +331,8 @@ private fun FullScreenMonthCalendar(
 
                     if (dayNumber in 1..maxDays) {
                         val isToday = isCurrentCalendarMonth && dayNumber == todayDay
-                        val entryCount = entryDayCounts[dayNumber] ?: 0
+                        val key = "$year-$month-$dayNumber"
+                        val entryCount = entryDayCounts[key] ?: 0
 
                         val cellCal = Calendar.getInstance().apply {
                             set(Calendar.YEAR, year)
@@ -358,13 +341,13 @@ private fun FullScreenMonthCalendar(
                             set(Calendar.HOUR_OF_DAY, 12)
                         }
 
-                        FullScreenDayCell(
+                        VerticalFeedDayCell(
                             dayNumber = dayNumber,
                             isToday = isToday,
                             entryCount = entryCount,
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
+                                .height(46.dp)
                                 .padding(2.dp),
                             onClick = { onDayClicked(cellCal.timeInMillis) }
                         )
@@ -374,24 +357,29 @@ private fun FullScreenMonthCalendar(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(6.dp))
     }
 }
 
+/**
+ * Day Cell in the vertical month feed:
+ * Has prominent, highly noticeable entry indicators (tinted background, accent border, and bold count badge).
+ */
 @Composable
-private fun FullScreenDayCell(
+private fun VerticalFeedDayCell(
     dayNumber: Int,
     isToday: Boolean,
     entryCount: Int,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(10.dp)
 
     val containerColor = if (isToday) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
     } else if (entryCount > 0) {
-        MaterialTheme.colorScheme.surfaceColorAtElevation(1.5.dp)
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.50f)
     } else {
         MaterialTheme.colorScheme.surfaceColorAtElevation(0.5.dp)
     }
@@ -399,7 +387,7 @@ private fun FullScreenDayCell(
     val borderStroke = if (isToday) {
         BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
     } else if (entryCount > 0) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
     } else {
         null
     }
@@ -410,18 +398,18 @@ private fun FullScreenDayCell(
             .background(containerColor)
             .then(if (borderStroke != null) Modifier.border(borderStroke, shape) else Modifier)
             .clickable(onClick = onClick)
-            .padding(4.dp),
-        contentAlignment = Alignment.TopCenter
+            .padding(horizontal = 2.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxSize()
         ) {
-            // Day number
+            // Day number with Today highlight
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(24.dp)
                     .clip(CircleShape)
                     .background(
                         if (isToday) MaterialTheme.colorScheme.primary
@@ -431,39 +419,28 @@ private fun FullScreenDayCell(
             ) {
                 Text(
                     text = "$dayNumber",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isToday || entryCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 12.sp,
+                    fontWeight = if (isToday || entryCount > 0) FontWeight.Bold else FontWeight.Medium,
                     color = if (isToday) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // Entry indicator dots or count pill
+            // Noticeable Entry Indicator Badge
             if (entryCount > 0) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 6.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .padding(horizontal = 5.dp, vertical = 0.5.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    val dots = entryCount.coerceAtMost(3)
-                    for (i in 0 until dots) {
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 1.5.dp)
-                                .size(5.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
-                    if (entryCount > 3) {
-                        Text(
-                            text = "+",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 1.dp)
-                        )
-                    }
+                    Text(
+                        text = if (entryCount > 9) "9+" else "$entryCount",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
                 }
             } else {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -473,7 +450,7 @@ private fun FullScreenDayCell(
 }
 
 /**
- * Centered Week View: 7-day horizontal strip with selected day highlighted in the center,
+ * Centered Week View: 7-day horizontal strip with selected day centered and highlighted,
  * followed by that day's entries.
  */
 @Composable
@@ -569,7 +546,7 @@ private fun CenteredWeekView(
                             dayNumber = dayCal.get(Calendar.DAY_OF_MONTH),
                             isSelected = isSelected,
                             isToday = isToday,
-                            hasEntries = dayEntryCount > 0,
+                            entryCount = dayEntryCount,
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 2.dp),
@@ -656,7 +633,7 @@ private fun WeekDayPill(
     dayNumber: Int,
     isSelected: Boolean,
     isToday: Boolean,
-    hasEntries: Boolean,
+    entryCount: Int,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -671,7 +648,7 @@ private fun WeekDayPill(
     val containerColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer
     } else if (isToday) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
     } else {
         MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
     }
@@ -721,16 +698,24 @@ private fun WeekDayPill(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Entry dot indicator
-            if (hasEntries) {
+            // Noticeable Entry indicator badge
+            if (entryCount > 0) {
                 Box(
                     modifier = Modifier
-                        .size(5.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
-                )
+                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                        .padding(horizontal = 4.dp, vertical = 0.5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$entryCount",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             } else {
-                Spacer(modifier = Modifier.size(5.dp))
+                Spacer(modifier = Modifier.size(12.dp))
             }
         }
     }
@@ -875,3 +860,4 @@ private fun MonthYearPinpointDialog(
         }
     )
 }
+
