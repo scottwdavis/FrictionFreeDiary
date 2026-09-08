@@ -28,7 +28,8 @@ class DiaryApplication : Application() {
 
     val diaryRepository: DiaryRepository by lazy {
         DiaryRepositoryImpl(
-            databaseProvider = { database }
+            databaseProvider = { database },
+            scope = applicationScope
         )
     }
 
@@ -39,9 +40,9 @@ class DiaryApplication : Application() {
         } catch (t: Throwable) {
             Log.e("DiaryApplication", "Failed to load sqlcipher native library", t)
         }
-        // Ensure default notebooks are initialized
+        // Prime database, ensure default notebooks, and warm up entry/notebook caches
         applicationScope.launch {
-            diaryRepository.ensureDefaultNotebooks()
+            diaryRepository.warmUp()
         }
     }
 }

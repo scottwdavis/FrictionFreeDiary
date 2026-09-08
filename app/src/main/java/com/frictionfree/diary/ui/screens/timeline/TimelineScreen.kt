@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -382,7 +383,17 @@ fun TimelineScreen(
             }
 
             // Main entries list
-            if (uiState.entries.isEmpty()) {
+            if (uiState.isLoading && uiState.entries.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 2.5.dp
+                    )
+                }
+            } else if (uiState.entries.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

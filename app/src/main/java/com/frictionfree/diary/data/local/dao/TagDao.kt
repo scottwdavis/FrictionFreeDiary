@@ -49,6 +49,9 @@ interface TagDao {
     @Query("SELECT entryId, tagName FROM entry_tag_cross_ref WHERE entryId IN (:entryIds)")
     suspend fun getTagsForEntries(entryIds: List<String>): List<EntryTagTuple>
 
+    @Query("SELECT entryId, tagName FROM entry_tag_cross_ref")
+    suspend fun getAllEntryTags(): List<EntryTagTuple>
+
     @Query("SELECT tagName FROM entry_tag_cross_ref WHERE entryId = :entryId")
     fun getTagsForEntryFlow(entryId: String): Flow<List<String>>
 

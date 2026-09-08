@@ -31,7 +31,8 @@ data class TimelineUiState(
     val viewMode: TimelineViewMode = TimelineViewMode.LIST,
     val selectedWeekOffset: Int = 0, // 0 = current week, -1 = last week, etc.
     val isArchiveMode: Boolean = false,
-    val selectedEntryIds: Set<String> = emptySet()
+    val selectedEntryIds: Set<String> = emptySet(),
+    val isLoading: Boolean = false
 )
 
 class TimelineViewModel(
@@ -47,7 +48,7 @@ class TimelineViewModel(
     private val _selectedEntryIds = MutableStateFlow<Set<String>>(emptySet())
 
     val notebooks: StateFlow<List<Notebook>> = diaryRepository.getAllNotebooks()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, diaryRepository.getCachedNotebooks())
 
     // Active entries flow for current archive mode.
     // Maintained in memory so notebook switching, tag filtering, and searches are 100% instant without re-querying disk.
@@ -82,6 +83,9 @@ class TimelineViewModel(
             isArchive = isArchive
         )
     }
+
+    private val initialCachedEntries = diaryRepository.getCachedEntries(isArchived = false)
+    private val initialCachedNotebooks = diaryRepository.getCachedNotebooks()
 
     val uiState: StateFlow<TimelineUiState> = combine(
         allEntriesFlow,
@@ -122,10 +126,19 @@ class TimelineViewModel(
             viewMode = params.mode,
             selectedWeekOffset = params.weekOffset,
             isArchiveMode = params.isArchive,
-            selectedEntryIds = validSelected
+            selectedEntryIds = validSelected,
+            isLoading = false
         )
     }.flowOn(Dispatchers.Default)
-    .stateIn(viewModelScope, SharingStarted.Lazily, TimelineUiState())
+    .stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        TimelineUiState(
+            entries = initialCachedEntries,
+            notebooks = initialCachedNotebooks,
+            isLoading = initialCachedEntries.isEmpty()
+        )
+    )
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query

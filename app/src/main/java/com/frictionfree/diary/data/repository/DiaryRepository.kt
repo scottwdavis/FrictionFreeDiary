@@ -14,18 +14,24 @@ import com.frictionfree.diary.data.model.ExportData
 import com.frictionfree.diary.data.model.Notebook
 import com.frictionfree.diary.data.model.Tag
 import com.frictionfree.diary.utils.HashtagParser
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
 interface DiaryRepository {
     fun getAllEntries(isArchived: Boolean = false): Flow<List<DiaryEntry>>
+    fun getCachedEntries(isArchived: Boolean = false): List<DiaryEntry>
     fun getEntryById(id: String): Flow<DiaryEntry?>
     suspend fun getEntryByIdDirect(id: String): DiaryEntry?
     fun getEntriesByNotebook(notebookId: String, isArchived: Boolean = false): Flow<List<DiaryEntry>>
@@ -40,11 +46,15 @@ interface DiaryRepository {
 
     // Notebooks
     fun getAllNotebooks(): Flow<List<Notebook>>
+    fun getCachedNotebooks(): List<Notebook>
     fun getNotebookEntryCounts(): Flow<Map<String, Int>>
     suspend fun saveNotebook(notebook: Notebook)
     suspend fun deleteNotebook(id: String, deleteEntries: Boolean = false, targetNotebookId: String? = null)
     suspend fun getNotebookById(id: String): Notebook?
     suspend fun ensureDefaultNotebooks()
+
+    // Warm-up
+    suspend fun warmUp()
 
     // Tags
     fun getAllTags(): Flow<List<Tag>>
@@ -62,21 +72,24 @@ class DiaryRepositoryImpl(
     private val databaseProvider: (() -> DiaryDatabase)? = null,
     private val explicitEntryDao: EntryDao? = null,
     private val explicitNotebookDao: NotebookDao? = null,
-    private val explicitTagDao: TagDao? = null
+    private val explicitTagDao: TagDao? = null,
+    private val scope: CoroutineScope? = null
 ) : DiaryRepository {
 
-    constructor(databaseProvider: () -> DiaryDatabase) : this(
+    constructor(databaseProvider: () -> DiaryDatabase, scope: CoroutineScope? = null) : this(
         databaseProvider = databaseProvider,
         explicitEntryDao = null,
         explicitNotebookDao = null,
-        explicitTagDao = null
+        explicitTagDao = null,
+        scope = scope
     )
 
     constructor(entryDao: EntryDao, notebookDao: NotebookDao, tagDao: TagDao) : this(
         databaseProvider = null,
         explicitEntryDao = entryDao,
         explicitNotebookDao = notebookDao,
-        explicitTagDao = tagDao
+        explicitTagDao = tagDao,
+        scope = null
     )
 
     private val entryDao: EntryDao get() = explicitEntryDao ?: databaseProvider?.invoke()?.entryDao()
@@ -86,15 +99,42 @@ class DiaryRepositoryImpl(
     private val tagDao: TagDao get() = explicitTagDao ?: databaseProvider?.invoke()?.tagDao()
         ?: error("No database or DAO provided")
 
+    private val repositoryScope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var cachedActiveEntries: List<DiaryEntry> = emptyList()
+
+    @Volatile
+    private var cachedArchivedEntries: List<DiaryEntry> = emptyList()
+
+    @Volatile
+    private var cachedNotebooks: List<Notebook> = emptyList()
+
+    override fun getCachedEntries(isArchived: Boolean): List<DiaryEntry> {
+        return if (isArchived) cachedArchivedEntries else cachedActiveEntries
+    }
+
+    override fun getCachedNotebooks(): List<Notebook> = cachedNotebooks
+
     private val json = Json { ignoreUnknownKeys = true }
 
     private suspend fun getTagsForEntriesBatched(entryIds: List<String>): Map<String, List<String>> {
         if (entryIds.isEmpty()) return emptyMap()
         val result = mutableMapOf<String, MutableList<String>>()
-        entryIds.chunked(500).forEach { chunk ->
-            val pairs = tagDao.getTagsForEntries(chunk)
-            for (pair in pairs) {
-                result.getOrPut(pair.entryId) { mutableListOf() }.add(pair.tagName)
+        if (entryIds.size > 200) {
+            val allTags = tagDao.getAllEntryTags()
+            val entryIdSet = entryIds.toHashSet()
+            for (pair in allTags) {
+                if (entryIdSet.contains(pair.entryId)) {
+                    result.getOrPut(pair.entryId) { mutableListOf() }.add(pair.tagName)
+                }
+            }
+        } else {
+            entryIds.chunked(500).forEach { chunk ->
+                val pairs = tagDao.getTagsForEntries(chunk)
+                for (pair in pairs) {
+                    result.getOrPut(pair.entryId) { mutableListOf() }.add(pair.tagName)
+                }
             }
         }
         return result
@@ -110,10 +150,59 @@ class DiaryRepositoryImpl(
         }
     }
 
-    override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> {
-        return entryDao.getAllEntriesFlow(isArchived)
-            .map { entities -> mapEntitiesToDomain(entities) }
+    private val activeEntriesSharedFlow: SharedFlow<List<DiaryEntry>> by lazy {
+        entryDao.getAllEntriesFlow(false)
+            .map { entities ->
+                val domain = mapEntitiesToDomain(entities)
+                cachedActiveEntries = domain
+                domain
+            }
             .flowOn(Dispatchers.IO)
+            .shareIn(
+                scope = repositoryScope,
+                started = SharingStarted.Eagerly,
+                replay = 1
+            )
+    }
+
+    private val archivedEntriesSharedFlow: SharedFlow<List<DiaryEntry>> by lazy {
+        entryDao.getAllEntriesFlow(true)
+            .map { entities ->
+                val domain = mapEntitiesToDomain(entities)
+                cachedArchivedEntries = domain
+                domain
+            }
+            .flowOn(Dispatchers.IO)
+            .shareIn(
+                scope = repositoryScope,
+                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),
+                replay = 1
+            )
+    }
+
+    private val notebooksSharedFlow: SharedFlow<List<Notebook>> by lazy {
+        notebookDao.getAllNotebooksFlow()
+            .map { list ->
+                val domain = list.map { it.toDomain() }
+                cachedNotebooks = domain
+                domain
+            }
+            .flowOn(Dispatchers.IO)
+            .shareIn(
+                scope = repositoryScope,
+                started = SharingStarted.Eagerly,
+                replay = 1
+            )
+    }
+
+    override suspend fun warmUp() {
+        ensureDefaultNotebooks()
+        notebooksSharedFlow.first()
+        activeEntriesSharedFlow.first()
+    }
+
+    override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> {
+        return if (isArchived) archivedEntriesSharedFlow else activeEntriesSharedFlow
     }
 
     override fun getEntryById(id: String): Flow<DiaryEntry?> {
@@ -255,7 +344,7 @@ class DiaryRepositoryImpl(
 
     // Notebooks
     override fun getAllNotebooks(): Flow<List<Notebook>> {
-        return notebookDao.getAllNotebooksFlow().map { list -> list.map { it.toDomain() } }
+        return notebooksSharedFlow
     }
 
     override fun getNotebookEntryCounts(): Flow<Map<String, Int>> {
@@ -364,7 +453,7 @@ class DiaryRepositoryImpl(
     }
 
     private fun decodeMediaList(jsonStr: String): List<String> {
-        if (jsonStr.isBlank()) return emptyList()
+        if (jsonStr.isBlank() || jsonStr == "[]") return emptyList()
         return try {
             json.decodeFromString<List<String>>(jsonStr)
         } catch (_: Exception) {

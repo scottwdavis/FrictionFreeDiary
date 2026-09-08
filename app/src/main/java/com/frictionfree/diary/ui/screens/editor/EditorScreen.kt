@@ -489,8 +489,9 @@ fun EditorScreen(
                 ) { page ->
                     val entry = displayEntries.getOrNull(page) ?: return@HorizontalPager
                     val isCurrentPage = page == pagerState.currentPage
+                    val isThisEntryActive = entry.id == uiState.entryId
 
-                    val pageEntry = if (isCurrentPage) {
+                    val pageEntry = if (isThisEntryActive) {
                         DiaryEntry(
                             id = uiState.entryId,
                             title = uiState.title,
@@ -514,9 +515,9 @@ fun EditorScreen(
                     EntryPageContent(
                         entry = pageEntry,
                         isCurrentPage = isCurrentPage,
-                        isEditing = isCurrentPage && !uiState.isPreviewMode,
-                        isFetchingLocation = isCurrentPage && uiState.isFetchingLocation,
-                        contentFieldValue = if (isCurrentPage) contentFieldValue else null,
+                        isEditing = isCurrentPage && isThisEntryActive && !uiState.isPreviewMode,
+                        isFetchingLocation = isThisEntryActive && uiState.isFetchingLocation,
+                        contentFieldValue = if (isThisEntryActive) contentFieldValue else null,
                         onContentFieldValueChange = {
                             contentFieldValue = it
                             viewModel.updateContent(it.text)
