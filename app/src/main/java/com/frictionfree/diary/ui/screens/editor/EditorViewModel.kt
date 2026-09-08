@@ -14,11 +14,13 @@ import com.frictionfree.diary.data.repository.SettingsRepository
 import com.frictionfree.diary.utils.LocationHelper
 import com.frictionfree.diary.utils.ShareIntentHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,7 +85,11 @@ class EditorViewModel(
     val notebooks: StateFlow<List<Notebook>> = diaryRepository.getAllNotebooks()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val allEntries: StateFlow<List<DiaryEntry>> = diaryRepository.getAllEntries(isArchived = false)
+    private val _isArchivedMode = MutableStateFlow(false)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allEntries: StateFlow<List<DiaryEntry>> = _isArchivedMode
+        .flatMapLatest { diaryRepository.getAllEntries(isArchived = it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val entryNavInfo: StateFlow<EntryNavInfo> = combine(allEntries, _uiState) { list, state ->
@@ -105,6 +111,9 @@ class EditorViewModel(
     private var lastSavedSnapshot: EditorUiState? = null
 
     fun selectEntry(entry: DiaryEntry) {
+        if (entry.isArchived != _isArchivedMode.value) {
+            _isArchivedMode.value = entry.isArchived
+        }
         val newState = EditorUiState(
             entryId = entry.id,
             title = entry.title,
@@ -154,6 +163,9 @@ class EditorViewModel(
         viewModelScope.launch {
             val existing = diaryRepository.getEntryByIdDirect(id)
             if (existing != null) {
+                if (existing.isArchived != _isArchivedMode.value) {
+                    _isArchivedMode.value = existing.isArchived
+                }
                 selectEntry(existing)
             }
         }

@@ -124,13 +124,16 @@ fun EditorScreen(
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
+    // Target entry ID to display initially
+    val targetId = initialEntryId ?: uiState.entryId
+
     // Build the list of entries for horizontal paging
-    val displayEntries = remember(allEntries, uiState.entryId) {
+    val displayEntries = remember(allEntries, targetId) {
         if (allEntries.isEmpty()) {
             if (uiState.entryId.isNotBlank()) listOf(uiState.toDiaryEntry()) else emptyList()
         } else {
-            val containsCurrent = allEntries.any { it.id == uiState.entryId }
-            if (!containsCurrent && (uiState.title.isNotBlank() || uiState.content.isNotBlank() || uiState.mediaUris.isNotEmpty() || initialEntryId == null)) {
+            val containsCurrent = allEntries.any { it.id == targetId }
+            if (!containsCurrent && targetId.isNotBlank()) {
                 listOf(uiState.toDiaryEntry()) + allEntries
             } else {
                 allEntries
@@ -139,9 +142,8 @@ fun EditorScreen(
     }
 
     // Determine target initial page
-    val targetIndex = remember(displayEntries, initialEntryId) {
-        val idToFind = initialEntryId ?: uiState.entryId
-        val idx = displayEntries.indexOfFirst { it.id == idToFind }
+    val targetIndex = remember(displayEntries, targetId) {
+        val idx = displayEntries.indexOfFirst { it.id == targetId }
         if (idx >= 0) idx else 0
     }
 
@@ -150,16 +152,13 @@ fun EditorScreen(
         pageCount = { displayEntries.size }
     )
 
-    // Ensure we start on the correct page if displayEntries arrives after initial composition
-    var hasAlignedInitialPage by remember { mutableStateOf(false) }
-    LaunchedEffect(displayEntries) {
-        if (!hasAlignedInitialPage && displayEntries.isNotEmpty()) {
-            val idToFind = initialEntryId ?: uiState.entryId
-            val target = displayEntries.indexOfFirst { it.id == idToFind }
+    // Re-align to target page when full entries list arrives
+    LaunchedEffect(displayEntries.size, targetId) {
+        if (displayEntries.isNotEmpty()) {
+            val target = displayEntries.indexOfFirst { it.id == targetId }
             if (target >= 0 && pagerState.currentPage != target) {
                 pagerState.scrollToPage(target)
             }
-            hasAlignedInitialPage = true
         }
     }
 
@@ -482,12 +481,13 @@ fun EditorScreen(
             } else {
                 HorizontalPager(
                     state = pagerState,
-                    key = { displayEntries[it].id },
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1,
-                    pageSpacing = 16.dp
+                    key = { index -> displayEntries.getOrNull(index)?.id ?: index },
+                    userScrollEnabled = displayEntries.size > 1,
+                    beyondViewportPageCount = if (displayEntries.size > 1) 1 else 0,
+                    pageSpacing = 16.dp,
+                    modifier = Modifier.fillMaxSize()
                 ) { page ->
-                    val entry = displayEntries[page]
+                    val entry = displayEntries.getOrNull(page) ?: return@HorizontalPager
                     val isCurrentPage = page == pagerState.currentPage
 
                     val pageEntry = if (isCurrentPage) {
