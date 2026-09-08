@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.frictionfree.diary.data.model.EntryColor
 import com.frictionfree.diary.ui.components.ColorPickerRow
+import com.frictionfree.diary.ui.components.FullScreenPhotoViewer
 import com.frictionfree.diary.ui.components.MarkdownEditorToolbar
 import com.frictionfree.diary.ui.components.MarkdownFormatter
 import com.frictionfree.diary.ui.components.MarkdownInlineText
@@ -103,6 +104,8 @@ fun EditorScreen(
     val notebooks by viewModel.notebooks.collectAsState()
 
     var showNotebookMenu by remember { mutableStateOf(false) }
+    var viewingPhotoIndex by remember { mutableStateOf<Int?>(null) }
+    var viewingExternalPhotoUrl by remember { mutableStateOf<String?>(null) }
 
     // Content text field state with cursor position tracking for Markdown toolbar
     var contentFieldValue by remember(uiState.entryId) {
@@ -507,38 +510,45 @@ fun EditorScreen(
                                     .padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                uiState.mediaUris.forEach { path ->
+                                uiState.mediaUris.forEachIndexed { index, path ->
                                     Box(
                                         modifier = Modifier
                                             .size(90.dp)
                                             .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                viewingPhotoIndex = index
+                                            }
                                     ) {
                                         AsyncImage(
-                                            model = File(path),
+                                            model = if (path.startsWith("http://") || path.startsWith("https://") ||
+                                                path.startsWith("content://") || path.startsWith("file://")
+                                            ) path else File(path),
                                             contentDescription = "Attached photo",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
                                         )
-                                        // Remove image button
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(22.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            IconButton(
-                                                onClick = { viewModel.removePhoto(path) },
-                                                modifier = Modifier.size(20.dp)
+                                        // Remove image button (only in editing mode)
+                                        if (!uiState.isPreviewMode) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(4.dp)
+                                                    .size(22.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(
-                                                    Icons.Default.Close,
-                                                    contentDescription = "Remove",
-                                                    modifier = Modifier.size(14.dp),
-                                                    tint = MaterialTheme.colorScheme.onSurface
-                                                )
+                                                IconButton(
+                                                    onClick = { viewModel.removePhoto(path) },
+                                                    modifier = Modifier.size(20.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Close,
+                                                        contentDescription = "Remove",
+                                                        modifier = Modifier.size(14.dp),
+                                                        tint = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -562,7 +572,15 @@ fun EditorScreen(
 
                             MarkdownRenderer(
                                 markdownText = uiState.content.ifBlank { "*Nothing written yet. Tap the edit icon to write!*" },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                onImageClick = { imageUrl ->
+                                    val idx = uiState.mediaUris.indexOf(imageUrl)
+                                    if (idx >= 0) {
+                                        viewingPhotoIndex = idx
+                                    } else {
+                                        viewingExternalPhotoUrl = imageUrl
+                                    }
+                                }
                             )
                         } else {
                             // Title input
@@ -625,4 +643,18 @@ fun EditorScreen(
     }
 }
 }
+
+    if (viewingPhotoIndex != null && uiState.mediaUris.isNotEmpty()) {
+        FullScreenPhotoViewer(
+            photos = uiState.mediaUris,
+            initialIndex = viewingPhotoIndex ?: 0,
+            onDismiss = { viewingPhotoIndex = null }
+        )
+    } else if (viewingExternalPhotoUrl != null) {
+        FullScreenPhotoViewer(
+            photos = listOf(viewingExternalPhotoUrl!!),
+            initialIndex = 0,
+            onDismiss = { viewingExternalPhotoUrl = null }
+        )
+    }
 }

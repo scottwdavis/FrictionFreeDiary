@@ -15,10 +15,32 @@ data class EntryTagTuple(
 
 @Dao
 interface TagDao {
-    @Query("SELECT * FROM tags ORDER BY usageCount DESC, name ASC")
+    @Query("""
+        SELECT t.name, 
+               (SELECT COUNT(*) FROM entry_tag_cross_ref r 
+                INNER JOIN entries e ON r.entryId = e.id 
+                WHERE r.tagName = t.name AND e.isArchived = 0) AS usageCount, 
+               t.lastUsedAt 
+        FROM tags t 
+        WHERE (SELECT COUNT(*) FROM entry_tag_cross_ref r 
+               INNER JOIN entries e ON r.entryId = e.id 
+               WHERE r.tagName = t.name AND e.isArchived = 0) > 0
+        ORDER BY usageCount DESC, t.name ASC
+    """)
     fun getAllTagsFlow(): Flow<List<TagEntity>>
 
-    @Query("SELECT * FROM tags ORDER BY usageCount DESC, name ASC")
+    @Query("""
+        SELECT t.name, 
+               (SELECT COUNT(*) FROM entry_tag_cross_ref r 
+                INNER JOIN entries e ON r.entryId = e.id 
+                WHERE r.tagName = t.name AND e.isArchived = 0) AS usageCount, 
+               t.lastUsedAt 
+        FROM tags t 
+        WHERE (SELECT COUNT(*) FROM entry_tag_cross_ref r 
+               INNER JOIN entries e ON r.entryId = e.id 
+               WHERE r.tagName = t.name AND e.isArchived = 0) > 0
+        ORDER BY usageCount DESC, t.name ASC
+    """)
     suspend fun getAllTags(): List<TagEntity>
 
     @Query("SELECT tagName FROM entry_tag_cross_ref WHERE entryId = :entryId")

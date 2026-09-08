@@ -55,7 +55,8 @@ import java.io.File
 fun MarkdownRenderer(
     markdownText: String,
     modifier: Modifier = Modifier,
-    onTagClick: ((String) -> Unit)? = null
+    onTagClick: ((String) -> Unit)? = null,
+    onImageClick: ((String) -> Unit)? = null
 ) {
     if (markdownText.isBlank()) return
 
@@ -101,7 +102,7 @@ fun MarkdownRenderer(
             if (standaloneImageMatch != null) {
                 val alt = standaloneImageMatch.groupValues[1]
                 val rawUrl = standaloneImageMatch.groupValues[2].trim().removeSurrounding("<", ">")
-                MarkdownImageBlock(url = rawUrl, alt = alt)
+                MarkdownImageBlock(url = rawUrl, alt = alt, onImageClick = onImageClick)
                 i++
                 continue
             }
@@ -573,7 +574,11 @@ private fun AnnotatedString.Builder.appendMarkdownSpans(
 }
 
 @Composable
-private fun MarkdownImageBlock(url: String, alt: String) {
+private fun MarkdownImageBlock(
+    url: String,
+    alt: String,
+    onImageClick: ((String) -> Unit)? = null
+) {
     val uriHandler = LocalUriHandler.current
     Box(
         modifier = Modifier
@@ -581,9 +586,13 @@ private fun MarkdownImageBlock(url: String, alt: String) {
             .padding(vertical = 6.dp)
             .clip(RoundedCornerShape(8.dp))
             .clickable {
-                try {
-                    uriHandler.openUri(url)
-                } catch (_: Exception) {}
+                if (onImageClick != null) {
+                    onImageClick(url)
+                } else {
+                    try {
+                        uriHandler.openUri(url)
+                    } catch (_: Exception) {}
+                }
             }
     ) {
         AsyncImage(
