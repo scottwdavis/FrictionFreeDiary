@@ -152,6 +152,7 @@ fun DiaryNavHost(
 
             EditorScreen(
                 viewModel = editorVm,
+                initialEntryId = entryId,
                 onNavigateBack = {
                     if (!navController.popBackStack()) {
                         navController.navigate(Screen.Timeline.route) {

@@ -50,7 +50,26 @@ data class EditorUiState(
     val isPreviewMode: Boolean = false,
     val isSaved: Boolean = false,
     val isArchived: Boolean = false
-)
+) {
+    fun toDiaryEntry(): DiaryEntry {
+        return DiaryEntry(
+            id = entryId,
+            title = title.trim(),
+            content = content.trim(),
+            notebookId = selectedNotebookId,
+            colorHex = selectedColorHex,
+            createdAt = createdAt,
+            updatedAt = System.currentTimeMillis(),
+            latitude = latitude,
+            longitude = longitude,
+            locationName = locationName,
+            mediaUris = mediaUris,
+            isPinned = isPinned,
+            isFavorite = isFavorite,
+            isArchived = isArchived
+        )
+    }
+}
 
 class EditorViewModel(
     application: Application,
@@ -83,6 +102,29 @@ class EditorViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.Lazily, EntryNavInfo())
 
+    private var lastSavedSnapshot: EditorUiState? = null
+
+    fun selectEntry(entry: DiaryEntry) {
+        val newState = EditorUiState(
+            entryId = entry.id,
+            title = entry.title,
+            content = entry.content,
+            selectedNotebookId = entry.notebookId,
+            selectedColorHex = entry.colorHex,
+            mediaUris = entry.mediaUris,
+            isPinned = entry.isPinned,
+            isFavorite = entry.isFavorite,
+            latitude = entry.latitude,
+            longitude = entry.longitude,
+            locationName = entry.locationName,
+            createdAt = entry.createdAt,
+            isPreviewMode = entry.content.isNotBlank(),
+            isArchived = entry.isArchived
+        )
+        _uiState.value = newState
+        lastSavedSnapshot = newState
+    }
+
     fun goToNextEntry(): Boolean {
         saveEntry()
         val nextId = entryNavInfo.value.nextId
@@ -104,25 +146,15 @@ class EditorViewModel(
     }
 
     fun loadEntry(id: String) {
+        val cached = allEntries.value.firstOrNull { it.id == id }
+        if (cached != null) {
+            selectEntry(cached)
+            return
+        }
         viewModelScope.launch {
             val existing = diaryRepository.getEntryByIdDirect(id)
             if (existing != null) {
-                _uiState.value = EditorUiState(
-                    entryId = existing.id,
-                    title = existing.title,
-                    content = existing.content,
-                    selectedNotebookId = existing.notebookId,
-                    selectedColorHex = existing.colorHex,
-                    mediaUris = existing.mediaUris,
-                    isPinned = existing.isPinned,
-                    isFavorite = existing.isFavorite,
-                    latitude = existing.latitude,
-                    longitude = existing.longitude,
-                    locationName = existing.locationName,
-                    createdAt = existing.createdAt,
-                    isPreviewMode = existing.content.isNotBlank(),
-                    isArchived = existing.isArchived
-                )
+                selectEntry(existing)
             }
         }
     }
@@ -130,13 +162,16 @@ class EditorViewModel(
     fun isGeotaggingEnabled(): Boolean = settingsRepository.geotaggingEnabled.value
 
     fun initNewEntry(initialTitle: String = "", initialContent: String = "", initialMedia: List<String> = emptyList()) {
-        _uiState.value = EditorUiState(
+        val newState = EditorUiState(
             entryId = UUID.randomUUID().toString(),
             title = initialTitle,
             content = initialContent,
             mediaUris = initialMedia,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            isPreviewMode = false
         )
+        _uiState.value = newState
+        lastSavedSnapshot = newState
         if (isGeotaggingEnabled()) {
             fetchLocation()
         }
@@ -178,14 +213,17 @@ class EditorViewModel(
 
     fun setNotebook(notebookId: String) {
         _uiState.value = _uiState.value.copy(selectedNotebookId = notebookId)
+        saveEntry()
     }
 
     fun setColor(color: EntryColor) {
         _uiState.value = _uiState.value.copy(selectedColorHex = color.hex)
+        saveEntry()
     }
 
     fun togglePinned() {
         _uiState.value = _uiState.value.copy(isPinned = !_uiState.value.isPinned)
+        saveEntry()
     }
 
     fun togglePreviewMode() {
@@ -202,6 +240,7 @@ class EditorViewModel(
             val current = _uiState.value.mediaUris.toMutableList()
             current.add(path)
             _uiState.value = _uiState.value.copy(mediaUris = current)
+            saveEntry()
         }
     }
 
@@ -209,6 +248,7 @@ class EditorViewModel(
         val current = _uiState.value.mediaUris.toMutableList()
         current.remove(path)
         _uiState.value = _uiState.value.copy(mediaUris = current)
+        saveEntry()
     }
 
     fun setLocation(lat: Double, lon: Double, name: String? = null) {
@@ -217,10 +257,12 @@ class EditorViewModel(
             longitude = lon,
             locationName = name ?: "%.4f, %.4f".format(lat, lon)
         )
+        saveEntry()
     }
 
     fun clearLocation() {
         _uiState.value = _uiState.value.copy(latitude = null, longitude = null, locationName = null)
+        saveEntry()
     }
 
     fun saveEntry(onComplete: (() -> Unit)? = null) {
@@ -231,26 +273,33 @@ class EditorViewModel(
             return
         }
 
+        // Avoid writing to disk if unchanged from last saved snapshot
+        val snapshot = lastSavedSnapshot
+        if (snapshot != null &&
+            state.entryId == snapshot.entryId &&
+            state.title == snapshot.title &&
+            state.content == snapshot.content &&
+            state.selectedNotebookId == snapshot.selectedNotebookId &&
+            state.selectedColorHex == snapshot.selectedColorHex &&
+            state.mediaUris == snapshot.mediaUris &&
+            state.isPinned == snapshot.isPinned &&
+            state.isFavorite == snapshot.isFavorite &&
+            state.isArchived == snapshot.isArchived &&
+            state.locationName == snapshot.locationName &&
+            state.latitude == snapshot.latitude &&
+            state.longitude == snapshot.longitude
+        ) {
+            onComplete?.invoke()
+            return
+        }
+
+        lastSavedSnapshot = state
+
         val appScope = (getApplication<Application>() as? DiaryApplication)?.applicationScope
         val scope = appScope ?: viewModelScope
 
         scope.launch {
-            val entry = DiaryEntry(
-                id = state.entryId,
-                title = state.title.trim(),
-                content = state.content.trim(),
-                notebookId = state.selectedNotebookId,
-                colorHex = state.selectedColorHex,
-                createdAt = state.createdAt,
-                updatedAt = System.currentTimeMillis(),
-                latitude = state.latitude,
-                longitude = state.longitude,
-                locationName = state.locationName,
-                mediaUris = state.mediaUris,
-                isPinned = state.isPinned,
-                isFavorite = state.isFavorite,
-                isArchived = state.isArchived
-            )
+            val entry = state.toDiaryEntry()
             diaryRepository.saveEntry(entry)
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(isSaved = true)
@@ -261,6 +310,7 @@ class EditorViewModel(
 
     fun toggleArchived() {
         _uiState.value = _uiState.value.copy(isArchived = !_uiState.value.isArchived)
+        saveEntry()
     }
 
     fun deleteEntry(onComplete: () -> Unit) {
