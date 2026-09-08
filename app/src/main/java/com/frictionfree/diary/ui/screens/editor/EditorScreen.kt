@@ -5,9 +5,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -36,11 +40,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.LocationOn
@@ -64,6 +71,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,8 +82,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -102,10 +113,25 @@ fun EditorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val notebooks by viewModel.notebooks.collectAsState()
+    val navInfo by viewModel.entryNavInfo.collectAsState()
 
     var showNotebookMenu by remember { mutableStateOf(false) }
     var viewingPhotoIndex by remember { mutableStateOf<Int?>(null) }
     var viewingExternalPhotoUrl by remember { mutableStateOf<String?>(null) }
+    var swipeOffsetX by remember { mutableFloatStateOf(0f) }
+
+    val animatedSwipeOffsetX by animateFloatAsState(
+        targetValue = swipeOffsetX,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "entrySwipeOffset"
+    )
+
+    LaunchedEffect(uiState.entryId) {
+        swipeOffsetX = 0f
+    }
 
     val markdownImageRegex = remember { Regex("""!\[([^\]]*)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)""") }
     val allEntryPhotos = remember(uiState.mediaUris, uiState.content) {
@@ -236,6 +262,31 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    // Previous & Next entry buttons
+                    if (navInfo.totalCount > 1) {
+                        IconButton(
+                            onClick = { viewModel.goToPreviousEntry() },
+                            enabled = navInfo.hasPrevious
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronLeft,
+                                contentDescription = "Previous entry",
+                                tint = if (navInfo.hasPrevious) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.goToNextEntry() },
+                            enabled = navInfo.hasNext
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = "Next entry",
+                                tint = if (navInfo.hasNext) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
+
                     // Pin toggle
                     IconButton(onClick = { viewModel.togglePinned() }) {
                         Icon(
@@ -254,11 +305,11 @@ fun EditorScreen(
                         )
                     }
 
-                    // Markdown Preview toggle
+                    // View / Edit toggle: Floppy disc icon when editing -> save & view; Edit pencil when in view mode -> edit
                     IconButton(onClick = { viewModel.togglePreviewMode() }) {
                         Icon(
-                            imageVector = if (uiState.isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility,
-                            contentDescription = if (uiState.isPreviewMode) "Edit Mode" else "Preview Markdown"
+                            imageVector = if (uiState.isPreviewMode) Icons.Default.Edit else Icons.Default.Save,
+                            contentDescription = if (uiState.isPreviewMode) "Edit Mode" else "Save & View Mode"
                         )
                     }
 
@@ -366,9 +417,38 @@ fun EditorScreen(
             val nonContentHeight = if (uiState.mediaUris.isNotEmpty()) 240.dp else 140.dp
             val contentMinHeight = (cardMinHeight - nonContentHeight).coerceAtLeast(180.dp)
 
+            val density = LocalDensity.current
+            val swipeThresholdPx = remember(density) { with(density) { 70.dp.toPx() } }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = animatedSwipeOffsetX
+                    }
+                    .pointerInput(uiState.entryId, navInfo.hasNext, navInfo.hasPrevious) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { swipeOffsetX = 0f },
+                            onDragEnd = {
+                                if (swipeOffsetX < -swipeThresholdPx && navInfo.hasNext) {
+                                    viewModel.goToNextEntry()
+                                } else if (swipeOffsetX > swipeThresholdPx && navInfo.hasPrevious) {
+                                    viewModel.goToPreviousEntry()
+                                }
+                                swipeOffsetX = 0f
+                            },
+                            onDragCancel = { swipeOffsetX = 0f },
+                            onHorizontalDrag = { _, dragAmount ->
+                                val isMovingLeft = dragAmount < 0
+                                val canMove = if (isMovingLeft) navInfo.hasNext else navInfo.hasPrevious
+                                if (canMove) {
+                                    swipeOffsetX += dragAmount
+                                } else {
+                                    swipeOffsetX += dragAmount * 0.25f
+                                }
+                            }
+                        )
+                    }
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {

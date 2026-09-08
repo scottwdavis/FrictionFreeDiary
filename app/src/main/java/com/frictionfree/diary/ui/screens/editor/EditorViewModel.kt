@@ -18,10 +18,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+
+data class EntryNavInfo(
+    val hasPrevious: Boolean = false,
+    val hasNext: Boolean = false,
+    val previousId: String? = null,
+    val nextId: String? = null,
+    val currentIndex: Int = -1,
+    val totalCount: Int = 0
+)
 
 data class EditorUiState(
     val entryId: String = "",
@@ -53,6 +63,45 @@ class EditorViewModel(
 
     val notebooks: StateFlow<List<Notebook>> = diaryRepository.getAllNotebooks()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val allEntries: StateFlow<List<DiaryEntry>> = diaryRepository.getAllEntries(isArchived = false)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val entryNavInfo: StateFlow<EntryNavInfo> = combine(allEntries, _uiState) { list, state ->
+        val idx = list.indexOfFirst { it.id == state.entryId }
+        if (idx >= 0) {
+            EntryNavInfo(
+                hasPrevious = idx > 0,
+                hasNext = idx < list.size - 1,
+                previousId = if (idx > 0) list[idx - 1].id else null,
+                nextId = if (idx < list.size - 1) list[idx + 1].id else null,
+                currentIndex = idx,
+                totalCount = list.size
+            )
+        } else {
+            EntryNavInfo(totalCount = list.size)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, EntryNavInfo())
+
+    fun goToNextEntry(): Boolean {
+        saveEntry()
+        val nextId = entryNavInfo.value.nextId
+        if (nextId != null) {
+            loadEntry(nextId)
+            return true
+        }
+        return false
+    }
+
+    fun goToPreviousEntry(): Boolean {
+        saveEntry()
+        val prevId = entryNavInfo.value.previousId
+        if (prevId != null) {
+            loadEntry(prevId)
+            return true
+        }
+        return false
+    }
 
     fun loadEntry(id: String) {
         viewModelScope.launch {
@@ -140,7 +189,11 @@ class EditorViewModel(
     }
 
     fun togglePreviewMode() {
-        _uiState.value = _uiState.value.copy(isPreviewMode = !_uiState.value.isPreviewMode)
+        val willBePreview = !_uiState.value.isPreviewMode
+        if (willBePreview) {
+            saveEntry()
+        }
+        _uiState.value = _uiState.value.copy(isPreviewMode = willBePreview)
     }
 
     fun addPhoto(uri: Uri) {
