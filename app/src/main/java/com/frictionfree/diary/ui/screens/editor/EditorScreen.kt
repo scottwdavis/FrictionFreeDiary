@@ -107,6 +107,14 @@ fun EditorScreen(
     var viewingPhotoIndex by remember { mutableStateOf<Int?>(null) }
     var viewingExternalPhotoUrl by remember { mutableStateOf<String?>(null) }
 
+    val markdownImageRegex = remember { Regex("""!\[([^\]]*)\]\(((?:<[^>]+>)|(?:[^\s)]+))\)""") }
+    val allEntryPhotos = remember(uiState.mediaUris, uiState.content) {
+        val markdownImages = markdownImageRegex.findAll(uiState.content).map {
+            it.groupValues[2].trim().removeSurrounding("<", ">")
+        }.toList()
+        (uiState.mediaUris + markdownImages).distinct()
+    }
+
     // Content text field state with cursor position tracking for Markdown toolbar
     var contentFieldValue by remember(uiState.entryId) {
         mutableStateOf(
@@ -516,7 +524,8 @@ fun EditorScreen(
                                             .size(90.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable {
-                                                viewingPhotoIndex = index
+                                                val targetIndex = allEntryPhotos.indexOf(path).takeIf { it >= 0 } ?: index
+                                                viewingPhotoIndex = targetIndex
                                             }
                                     ) {
                                         AsyncImage(
@@ -574,7 +583,11 @@ fun EditorScreen(
                                 markdownText = uiState.content.ifBlank { "*Nothing written yet. Tap the edit icon to write!*" },
                                 modifier = Modifier.fillMaxWidth(),
                                 onImageClick = { imageUrl ->
-                                    val idx = uiState.mediaUris.indexOf(imageUrl)
+                                    val cleanUrl = imageUrl.removePrefix("file://")
+                                    val idx = allEntryPhotos.indexOfFirst {
+                                        it == imageUrl || it == cleanUrl ||
+                                        try { File(it).absolutePath == File(cleanUrl).absolutePath } catch (_: Exception) { false }
+                                    }
                                     if (idx >= 0) {
                                         viewingPhotoIndex = idx
                                     } else {
@@ -644,11 +657,14 @@ fun EditorScreen(
 }
 }
 
-    if (viewingPhotoIndex != null && uiState.mediaUris.isNotEmpty()) {
+    if (viewingPhotoIndex != null && allEntryPhotos.isNotEmpty()) {
         FullScreenPhotoViewer(
-            photos = uiState.mediaUris,
+            photos = allEntryPhotos,
             initialIndex = viewingPhotoIndex ?: 0,
-            onDismiss = { viewingPhotoIndex = null }
+            onDismiss = {
+                viewingPhotoIndex = null
+                viewingExternalPhotoUrl = null
+            }
         )
     } else if (viewingExternalPhotoUrl != null) {
         FullScreenPhotoViewer(

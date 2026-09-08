@@ -8,8 +8,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -23,7 +27,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,9 +44,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,15 +64,18 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
  * An immersive, full-screen photo lightbox with:
- * - Multi-photo horizontal swipe paging
- * - Pinch-to-zoom (up to 5x) and pan gestures
- * - Double-tap to zoom in/out (1x <-> 2.5x)
- * - Safe scroll locking while zoomed in
- * - Share and dismiss actions
+ * - Fluid horizontal swipe paging across all entry photos
+ * - Non-interfering gesture detection (swiping works smoothly when 1x; zooming & panning active when zoomed)
+ * - Next & Previous edge chevrons for 1-tap browsing
+ * - Bottom indicator dots
+ * - Double-tap to zoom (1x <-> 2.5x)
+ * - Pinch-to-zoom (up to 5x) and pan
+ * - Native Android photo sharing
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -76,9 +88,22 @@ fun FullScreenPhotoViewer(
 
     val safeIndex = initialIndex.coerceIn(0, (photos.size - 1).coerceAtLeast(0))
     val pagerState = rememberPagerState(initialPage = safeIndex) { photos.size }
+    val coroutineScope = rememberCoroutineScope()
     var controlsVisible by remember { mutableStateOf(true) }
     var currentScale by remember { mutableFloatStateOf(1f) }
     val context = LocalContext.current
+
+    // Ensure we start on the selected photo
+    LaunchedEffect(safeIndex) {
+        if (pagerState.currentPage != safeIndex) {
+            pagerState.scrollToPage(safeIndex)
+        }
+    }
+
+    // Reset zoom level whenever page changes
+    LaunchedEffect(pagerState.currentPage) {
+        currentScale = 1f
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -94,6 +119,7 @@ fun FullScreenPhotoViewer(
                 .fillMaxSize()
                 .background(Color(0xFF0A0A0A))
         ) {
+            // Horizontal Pager: user can swipe between all attached photos
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
@@ -116,7 +142,79 @@ fun FullScreenPhotoViewer(
                 )
             }
 
-            // Top overlay bar with back/close, photo counter, and share button
+            // Left Navigation Button (Previous Photo)
+            if (photos.size > 1 && pagerState.currentPage > 0 && controlsVisible) {
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 12.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Previous photo",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            // Right Navigation Button (Next Photo)
+            if (photos.size > 1 && pagerState.currentPage < photos.size - 1 && controlsVisible) {
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Next photo",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            // Bottom Page Indicator Dots (when multiple photos)
+            if (photos.size > 1 && controlsVisible) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 36.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    photos.forEachIndexed { dotIndex, _ ->
+                        val isSelected = pagerState.currentPage == dotIndex
+                        Box(
+                            modifier = Modifier
+                                .size(if (isSelected) 10.dp else 7.dp)
+                                .clip(CircleShape)
+                                .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.4f))
+                                .clickable {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(dotIndex)
+                                    }
+                                }
+                        )
+                    }
+                }
+            }
+
+            // Top overlay bar with close, photo counter, and share button
             AnimatedVisibility(
                 visible = controlsVisible,
                 enter = fadeIn(),
@@ -198,7 +296,7 @@ private fun ZoomablePhotoItem(
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
-    // Reset zoom and pan when swiping to another page
+    // Reset zoom and pan when navigating away from this page
     LaunchedEffect(isCurrentPage) {
         if (!isCurrentPage) {
             scale = 1f
@@ -220,7 +318,7 @@ private fun ZoomablePhotoItem(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(isCurrentPage) {
                 detectTapGestures(
                     onDoubleTap = {
                         if (scale > 1.2f) {
@@ -237,21 +335,45 @@ private fun ZoomablePhotoItem(
                     }
                 )
             }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = newScale
-                    onScaleChanged(newScale)
+            .pointerInput(isCurrentPage) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pointerCount = event.changes.count { it.pressed }
 
-                    if (newScale > 1f) {
-                        val maxPanX = 1200f * (newScale - 1f)
-                        val maxPanY = 1600f * (newScale - 1f)
-                        val newOffsetX = (offset.x + pan.x).coerceIn(-maxPanX, maxPanX)
-                        val newOffsetY = (offset.y + pan.y).coerceIn(-maxPanY, maxPanY)
-                        offset = Offset(newOffsetX, newOffsetY)
-                    } else {
-                        offset = Offset.Zero
-                    }
+                        if (pointerCount >= 2) {
+                            // Two or more fingers: PINCH TO ZOOM
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+
+                            val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+                            scale = newScale
+                            onScaleChanged(newScale)
+
+                            if (newScale > 1.05f) {
+                                val maxPanX = 1200f * (newScale - 1f)
+                                val maxPanY = 1600f * (newScale - 1f)
+                                val newOffsetX = (offset.x + panChange.x).coerceIn(-maxPanX, maxPanX)
+                                val newOffsetY = (offset.y + panChange.y).coerceIn(-maxPanY, maxPanY)
+                                offset = Offset(newOffsetX, newOffsetY)
+                            } else {
+                                offset = Offset.Zero
+                            }
+                            event.changes.forEach { it.consume() }
+                        } else if (pointerCount == 1 && scale > 1.05f) {
+                            // Single finger WHILE ZOOMED: PAN
+                            val panChange = event.calculatePan()
+                            val maxPanX = 1200f * (scale - 1f)
+                            val maxPanY = 1600f * (scale - 1f)
+                            val newOffsetX = (offset.x + panChange.x).coerceIn(-maxPanX, maxPanX)
+                            val newOffsetY = (offset.y + panChange.y).coerceIn(-maxPanY, maxPanY)
+                            offset = Offset(newOffsetX, newOffsetY)
+                            event.changes.forEach { it.consume() }
+                        }
+                        // When pointerCount == 1 and scale <= 1.05f:
+                        // We DO NOT consume pointer movements so HorizontalPager can swipe freely!
+                    } while (event.changes.any { it.pressed })
                 }
             },
         contentAlignment = Alignment.Center
