@@ -187,18 +187,24 @@ object DayOneImporter {
         val dayOneExport = jsonParser.decodeFromString<DayOneExport>(jsonContent)
 
         // 1. Create or find Notebook
+        // Use a deterministic, stable ID derived from the notebook name so that re-imports
+        // (e.g. after an interrupted import) don't generate a new random ID, which would
+        // trigger ON DELETE SET_DEFAULT on already-imported entries and cause a NOT NULL
+        // constraint violation on notebookId (SQLite error 1299).
         onProgress?.invoke("Setting Up Notebook", "Creating notebook '$notebookName'...", null)
-        val allNotebooks = diaryRepository.getAllNotebooks()
-        val notebookId = "nb_dayone_${UUID.randomUUID().toString().take(8)}"
-        val notebook = Notebook(
-            id = notebookId,
-            name = notebookName,
-            description = "Imported from Day One",
-            icon = "book",
-            colorHex = "#1565C0",
-            isDefault = false
-        )
-        diaryRepository.saveNotebook(notebook)
+        val notebookId = "nb_dayone_${notebookName.lowercase().replace(Regex("[^a-z0-9]"), "_").take(32)}"
+        val existingNotebook = diaryRepository.getNotebookById(notebookId)
+        if (existingNotebook == null) {
+            val notebook = Notebook(
+                id = notebookId,
+                name = notebookName,
+                description = "Imported from Day One",
+                icon = "book",
+                colorHex = "#1565C0",
+                isDefault = false
+            )
+            diaryRepository.saveNotebook(notebook)
+        }
 
         var photoCount = 0
         val total = dayOneExport.entries.size

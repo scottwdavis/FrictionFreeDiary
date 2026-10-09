@@ -26,6 +26,11 @@ interface NotebookDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotebooks(notebooks: List<NotebookEntity>)
 
+    // Used during import: IGNORE leaves existing notebooks untouched so we don't
+    // trigger ON DELETE SET_DEFAULT (which would NULL-out entries.notebookId → NOT NULL error).
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertNotebooksIgnore(notebooks: List<NotebookEntity>)
+
     @Update
     suspend fun updateNotebook(notebook: NotebookEntity)
 

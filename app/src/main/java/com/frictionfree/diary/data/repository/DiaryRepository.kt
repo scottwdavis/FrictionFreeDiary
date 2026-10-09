@@ -433,10 +433,14 @@ class DiaryRepositoryImpl(
         overwriteExisting: Boolean,
         onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?
     ) {
-        // 1. Import notebooks
+        // 1. Import notebooks — use IGNORE so existing notebooks are left untouched.
+        // REPLACE would DELETE the existing row then re-INSERT it, which triggers
+        // ON DELETE SET_DEFAULT on entries.notebookId. Since there is no SQL-level
+        // DEFAULT on that column, SQLite sets it to NULL → NOT NULL constraint violation
+        // (SQLite error 1299) when re-importing after a partial/interrupted import.
         onProgress?.invoke("Importing Notebooks", "Setting up ${exportData.notebooks.size} notebooks...", null)
         val notebookEntities = exportData.notebooks.map { NotebookEntity.fromDomain(it) }
-        notebookDao.insertNotebooks(notebookEntities)
+        notebookDao.insertNotebooksIgnore(notebookEntities)
 
         // 2. Import entries
         val total = exportData.entries.size
