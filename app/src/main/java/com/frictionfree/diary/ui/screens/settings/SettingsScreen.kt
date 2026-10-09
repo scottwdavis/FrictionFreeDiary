@@ -400,7 +400,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export JSON Backup")
+                        Text("Export Backup Package")
                     }
 
                     // Share button if export was generated
@@ -414,8 +414,9 @@ fun SettingsScreen(
                                     "${context.packageName}.fileprovider",
                                     file
                                 )
+                                val mimeType = if (file.name.endsWith(".zip", ignoreCase = true)) "application/zip" else "application/json"
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/json"
+                                    type = mimeType
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
@@ -489,11 +490,13 @@ fun SettingsScreen(
                             icon = Icons.Default.FileUpload,
                             iconTint = MaterialTheme.colorScheme.secondary,
                             title = "FrictionFree Backup",
-                            subtitle = "Native JSON backup file",
+                            subtitle = "Native backup archive (.zip or .json)",
                             onClick = {
                                 pendingImportType = "Native"
                                 importPickerLauncher.launch(
                                     arrayOf(
+                                        "application/zip",
+                                        "application/x-zip-compressed",
                                         "application/json",
                                         "application/octet-stream",
                                         "*/*"

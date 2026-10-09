@@ -1,0 +1,4 @@
+interface:
+  display_name: "FrictionFree Diary JSON"
+  short_description: "Create native diary JSON with validated dates and tags"
+  default_prompt: "Use $frictionfree-diary-json to convert this material into a validated FrictionFree Diary import file."

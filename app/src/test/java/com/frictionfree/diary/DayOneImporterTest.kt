@@ -80,6 +80,7 @@ class DayOneImporterTest {
         val savedNotebooks = mutableListOf<Notebook>()
 
         val fakeRepository = object : DiaryRepository {
+            override fun getCachedEntries(isArchived: Boolean): List<DiaryEntry> = savedEntries
             override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(savedEntries)
             override fun getEntryById(id: String): Flow<DiaryEntry?> = flowOf(savedEntries.firstOrNull { it.id == id })
             override suspend fun getEntryByIdDirect(id: String): DiaryEntry? = savedEntries.firstOrNull { it.id == id }
@@ -98,6 +99,7 @@ class DayOneImporterTest {
             override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
             override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
+            override fun getCachedNotebooks(): List<Notebook> = savedNotebooks
             override fun getNotebookEntryCounts(): Flow<Map<String, Int>> = flowOf(emptyMap())
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)
@@ -105,6 +107,7 @@ class DayOneImporterTest {
             override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {}
             override suspend fun getNotebookById(id: String): Notebook? = savedNotebooks.firstOrNull { it.id == id }
             override suspend fun ensureDefaultNotebooks() {}
+            override suspend fun warmUp() {}
             override fun getAllTags(): Flow<List<Tag>> = flowOf(emptyList())
             override suspend fun getExportData(): ExportData = ExportData()
             override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean, onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?) {}
@@ -154,6 +157,7 @@ class DayOneImporterTest {
         val savedNotebooks = mutableListOf<Notebook>()
 
         val fakeRepo = object : DiaryRepository {
+            override fun getCachedEntries(isArchived: Boolean): List<DiaryEntry> = savedEntries
             override fun getAllEntries(isArchived: Boolean): Flow<List<DiaryEntry>> = flowOf(savedEntries)
             override fun getEntryById(id: String): Flow<DiaryEntry?> = flowOf(savedEntries.firstOrNull { it.id == id })
             override suspend fun getEntryByIdDirect(id: String): DiaryEntry? = savedEntries.firstOrNull { it.id == id }
@@ -170,6 +174,7 @@ class DayOneImporterTest {
             override suspend fun archiveEntries(entryIds: List<String>, isArchived: Boolean) {}
             override suspend fun moveEntriesToNotebook(entryIds: List<String>, notebookId: String) {}
             override fun getAllNotebooks(): Flow<List<Notebook>> = flowOf(savedNotebooks)
+            override fun getCachedNotebooks(): List<Notebook> = savedNotebooks
             override fun getNotebookEntryCounts(): Flow<Map<String, Int>> = flowOf(emptyMap())
             override suspend fun saveNotebook(notebook: Notebook) {
                 savedNotebooks.add(notebook)
@@ -177,6 +182,7 @@ class DayOneImporterTest {
             override suspend fun deleteNotebook(id: String, deleteEntries: Boolean, targetNotebookId: String?) {}
             override suspend fun getNotebookById(id: String): Notebook? = savedNotebooks.firstOrNull { it.id == id }
             override suspend fun ensureDefaultNotebooks() {}
+            override suspend fun warmUp() {}
             override fun getAllTags(): Flow<List<Tag>> = flowOf(emptyList())
             override suspend fun getExportData(): ExportData = ExportData()
             override suspend fun importData(exportData: ExportData, overwriteExisting: Boolean, onProgress: ((title: String, detail: String, progress: Float?) -> Unit)?) {}

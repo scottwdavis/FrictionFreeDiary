@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "app": "FrictionFreeDiary",
+  "exportedAt": 1791460800000,
+  "entries": [
+    {
+      "id": "16c1442b-533b-4c6c-a5c2-7b62013d309e",
+      "title": "Example walk notes",
+      "content": "Synthetic example: a short walk and a few notes.\n\n### Notes\n- Preserve details from the original source.\n- Dates in this example use UTC.\n\n> Example quote with \"quotation marks\".\n\n#walking #notes",
+      "notebookId": "notebook_import_example",
+      "colorHex": "#2E7D32",
+      "createdAt": 1791288000000,
+      "updatedAt": 1791288000000,
+      "latitude": null,
+      "longitude": null,
+      "locationName": null,
+      "mediaUris": [],
+      "tags": ["walking", "notes"],
+      "isPinned": false,
+      "isFavorite": false,
+      "moodEmoji": null,
+      "isArchived": false
+    },
+    {
+      "id": "a7fb2e6e-84db-4a0f-a696-0a1aaf4fcdbd",
+      "title": "Example reading note",
+      "content": "Synthetic example: a reading note with Unicode — café 📖.\n\n[Example source](https://example.com)\n\n- [x] Read the passage\n- [ ] Write a reflection\n\n#reading",
+      "notebookId": "notebook_import_example",
+      "colorHex": "#00000000",
+      "createdAt": 1791374400000,
+      "updatedAt": 1791374400000,
+      "latitude": null,
+      "longitude": null,
+      "locationName": null,
+      "mediaUris": [],
+      "tags": ["reading"],
+      "isPinned": false,
+      "isFavorite": false,
+      "moodEmoji": null,
+      "isArchived": false
+    }
+  ],
+  "notebooks": [
+    {
+      "id": "notebook_import_example",
+      "name": "Import Examples",
+      "description": "Synthetic entries demonstrating native JSON",
+      "icon": "book",
+      "colorHex": "#2E7D32",
+      "createdAt": 1791460800000,
+      "isDefault": false
+    }
+  ],
+  "tags": []
+}
